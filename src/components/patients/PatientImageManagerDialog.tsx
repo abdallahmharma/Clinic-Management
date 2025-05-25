@@ -1,7 +1,7 @@
 
 "use client";
 
-import ** React from 'react';
+import * as React from 'react';
 import Image from 'next/image';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -58,10 +58,10 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
       const selectedFiles = Array.from(event.target.files);
-      const validFiles = selectedFiles.filter(file => 
+      const validFiles = selectedFiles.filter(file =>
         file.size <= MAX_FILE_SIZE_BYTES && ACCEPTED_IMAGE_TYPES.includes(file.type)
       );
-      
+
       if (validFiles.length !== selectedFiles.length) {
         toast({
           title: "ملفات غير صالحة",
@@ -87,9 +87,9 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
     try {
       const uploadPromises = filesToUpload.map(file => uploadPatientImage(file, patient.id));
       const newUploadedUrls = await Promise.all(uploadPromises);
-      
+
       const updatedImageUrls = [...currentImageUrls, ...newUploadedUrls];
-      
+
       const updatedPatientData = await updatePatient(patient.id, { imageUrls: updatedImageUrls });
       if (updatedPatientData) {
         setCurrentImageUrls(updatedImageUrls);
@@ -143,7 +143,7 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
       setIsDeleting(prev => ({ ...prev, [imageUrlToDelete]: false }));
     }
   };
-  
+
   const closeDialog = () => {
     setOpen(false);
   }
