@@ -21,7 +21,7 @@ const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/web
 const patientSchema = z.object({
   name: z.string().min(3, { message: "يجب أن يكون الاسم 3 أحرف على الأقل" }),
   age: z.coerce.number().min(0, { message: "يجب أن يكون العمر رقمًا موجبًا" }).max(120),
-  phone: z.string().regex(/^05\d{8}$/, { message: "يجب أن يكون رقم الهاتف سعوديًا صالحًا (05xxxxxxxx)" }),
+  phone: z.string().regex(/^0\d{9}$/, { message: "رقم الهاتف يجب أن يتكون من 10 أرقام ويبدأ بـ 0 (مثال: 0772150001)" }),
   imageFiles: z.custom<FileList>()
     .optional()
     .refine(files => !files || files.length === 0 || Array.from(files).every(file => file.size <= MAX_FILE_SIZE_BYTES), 
@@ -132,7 +132,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
 
         <div>
           <Label htmlFor="phone">رقم الهاتف</Label>
-          <Input id="phone" {...register("phone")} className="mt-1" dir="ltr" />
+          <Input id="phone" {...register("phone")} className="mt-1" dir="ltr" placeholder="0772150001" />
           {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
         </div>
 
@@ -189,3 +189,5 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
     </form>
   );
 }
+
+    
