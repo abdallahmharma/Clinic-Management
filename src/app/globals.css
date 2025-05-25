@@ -11,8 +11,8 @@ body {
 
 @layer base {
   :root {
-    --background: 195 53% 92.7%; /* #E0F2F7 Light desaturated blue */
-    --foreground: 222.2 84% 4.9%; /* Default dark foreground for contrast */
+    --background: 0 0% 100%;           /* خلفية بيضاء */
+    --foreground: 222.2 84% 4.9%;      /* نص داكن */
 
     --card: 0 0% 100%; /* White cards */
     --card-foreground: 222.2 84% 4.9%;
@@ -20,24 +20,24 @@ body {
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 197 71.4% 72.5%; /* #87CEEB Soft sky blue */
-    --primary-foreground: 0 0% 0%; /* Black text for contrast on light blue */
+    --primary: 225 75% 60%;            /* اللون الأساسي - أزرق */
+    --primary-foreground: 210 40% 98%; /* نص على اللون الأساسي */
 
-    --secondary: 210 40% 96.1%; /* Default light gray */
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 210 40% 96.1%;        /* اللون الثانوي - رمادي فاتح */
+    --secondary-foreground: 222.2 47.4% 11.2%; /* نص على اللون الثانوي */
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 210 40% 96.1%;            /* لون مكتوم */
+    --muted-foreground: 215.4 16.3% 46.9%; /* نص مكتوم */
 
-    --accent: 276 39.1% 66.3%; /* #B084CC Muted violet */
-    --accent-foreground: 0 0% 100%; /* White text for contrast on violet */
+    --accent: 210 40% 96.1%;           /* لون مميز */
+    --accent-foreground: 222.2 47.4% 11.2%; /* نص على اللون المميز */
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;      /* لون التدمير - أحمر */
+    --destructive-foreground: 210 40% 98%; /* نص على لون التدمير */
 
-    --border: 195 30% 80%; /* Border color, slightly darker than background */
-    --input: 0 0% 100%; /* White input background */
-    --ring: 197 71.4% 72.5%; /* Ring color same as primary */
+    --border: 214.3 31.8% 91.4%;       /* لون الحدود */
+    --input: 214.3 31.8% 91.4%;        /* لون الإدخال */
+    --ring: 222.2 84% 4.9%;            /* لون الحلقة عند التركيز */
 
     --radius: 0.5rem;
 
@@ -69,8 +69,8 @@ body {
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 197 71.4% 72.5%; /* Keep primary same for dark if desired, or adjust */
-    --primary-foreground: 0 0% 0%; 
+    --primary: 225 75% 60%; /* Adjusted to match new light primary */
+    --primary-foreground: 210 40% 98%; /* Adjusted to match new light primary-foreground */
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -78,15 +78,15 @@ body {
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 276 39.1% 66.3%; /* Keep accent same for dark if desired, or adjust */
-    --accent-foreground: 0 0% 100%;
+    --accent: 217.2 32.6% 17.5%; /* Adjusted to a darker accent for dark mode */
+    --accent-foreground: 210 40% 98%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 210 40% 98%;
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 197 71.4% 72.5%;
+    --ring: 225 75% 60%; /* Adjusted to match new primary */
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
