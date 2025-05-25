@@ -4,6 +4,7 @@ export interface Patient {
   name: string;
   age: number;
   phone: string;
+  email?: string;
   imageUrls?: string[]; // Changed from imageUrl to imageUrls array
   createdAt: string; // ISO date string
 }
@@ -17,3 +18,8 @@ export interface Appointment {
   notes?: string;
   createdAt: string; // ISO date string
 }
+
+export type PatientSelectItem = {
+  label: string;
+  value: string;
+};

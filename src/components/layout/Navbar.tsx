@@ -20,7 +20,7 @@ export function Navbar() {
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors">
           <Stethoscope className="h-7 w-7" />
-          <h1 className="text-xl font-bold">شفاء Clinic</h1>
+          <h1 className="text-xl font-bold">Clinic Management</h1>
         </Link>
         <nav className="flex items-center gap-2 sm:gap-4">
           {navItems.map((item) => (

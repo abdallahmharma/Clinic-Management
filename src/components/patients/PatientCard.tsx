@@ -23,12 +23,12 @@ export function PatientCard({ patient, onEdit, onDelete }: PatientCardProps) {
       <CardHeader className="p-0">
         <div className="relative h-40 w-full bg-muted">
           <Image
-            src={patient.imageUrl || 'https://placehold.co/600x400.png'}
+            src={Array.isArray(patient.imageUrls) ? patient.imageUrls[0] : patient.imageUrls || 'https://placehold.co/600x400.png'}
             alt={patient.name}
             layout="fill"
             objectFit="cover"
-            data-ai-hint="person portrait"
-            className={!patient.imageUrl ? 'opacity-50' : ''}
+            data-ai-hint="person portrait that represent a patient"
+            className={!patient.imageUrls ? 'opacity-50' : ''}
           />
         </div>
       </CardHeader>

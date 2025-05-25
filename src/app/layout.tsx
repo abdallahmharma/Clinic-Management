@@ -12,8 +12,8 @@ const tajawal = Tajawal({
 });
 
 export const metadata: Metadata = {
-  title: 'شفاء Clinic - إدارة العيادات',
-  description: 'نظام إدارة المرضى والمواعيد للعيادات الطبية',
+  title: 'Clinic Management - إدارة العيادات',
+  description: 'نظام إدارة المرضى والمواعيد للعيادات الطبية - Clinic Management System',
 };
 
 export default function RootLayout({
@@ -30,7 +30,7 @@ export default function RootLayout({
         </main>
         <Toaster />
         <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-          © {new Date().getFullYear()} شفاء Clinic. جميع الحقوق محفوظة.
+          © {new Date().getFullYear()} Clinic Management. جميع الحقوق محفوظة.
         </footer>
       </body>
     </html>
