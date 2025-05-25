@@ -1,7 +1,6 @@
 
 import { supabase } from './supabaseClient';
 import type { Patient, Appointment, PatientSelectItem } from './types';
-import { format } from 'date-fns'; // format is not used here anymore but kept if needed later
 
 // Helper to map Supabase patient row to our Patient type
 function mapPatientRowToPatient(row: any): Patient {
@@ -11,7 +10,7 @@ function mapPatientRowToPatient(row: any): Patient {
     age: row.age,
     phone: row.phone,
     email: row.email,
-    imageUrl: row.image_url || undefined,
+    imageUrls: row.image_urls || [], // Changed from image_url to image_urls
     createdAt: row.created_at,
   };
 }
@@ -65,8 +64,7 @@ export async function addPatient(patientData: Omit<Patient, 'id' | 'createdAt'>)
     age: patientData.age,
     phone: patientData.phone,
     email: patientData.email,
-    image_url: patientData.imageUrl,
-    // created_at is set by default in Supabase or can be set here
+    image_urls: patientData.imageUrls, // Changed from image_url
   };
   const { data, error } = await supabase
     .from('patients')
@@ -87,7 +85,7 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
    if (patientData.age !== undefined) patientToUpdate.age = patientData.age;
    if (patientData.phone !== undefined) patientToUpdate.phone = patientData.phone;
    if (patientData.email !== undefined) patientToUpdate.email = patientData.email;
-   if (patientData.imageUrl !== undefined) patientToUpdate.image_url = patientData.imageUrl;
+   if (patientData.imageUrls !== undefined) patientToUpdate.image_urls = patientData.imageUrls; // Changed
 
   const { data, error } = await supabase
     .from('patients')
@@ -104,8 +102,6 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
 }
 
 export async function deletePatient(id: string): Promise<boolean> {
-  // Optional: Consider deleting related appointments or setting up cascade delete in Supabase
-  // For now, just delete the patient.
   const { error: appointmentError } = await supabase
     .from('appointments')
     .delete()
@@ -113,7 +109,6 @@ export async function deletePatient(id: string): Promise<boolean> {
 
   if (appointmentError) {
     console.error('Error deleting related appointments for patient:', id, appointmentError);
-    // Decide if you want to throw or continue to delete the patient
   }
   
   const { error } = await supabase
@@ -137,7 +132,7 @@ export async function getPatientSelectItems(): Promise<PatientSelectItem[]> {
 export async function getAppointments(): Promise<Appointment[]> {
   const { data, error } = await supabase
     .from('appointments')
-    .select('*, patients(name)') // Fetch related patient's name
+    .select('*, patients(name)') 
     .order('date', { ascending: false })
     .order('time', { ascending: false });
 
@@ -173,7 +168,7 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
   const { data, error } = await supabase
     .from('appointments')
     .insert(appointmentToInsert)
-    .select('*, patients(name)') // Fetch related patient's name after insert
+    .select('*, patients(name)') 
     .single();
 
   if (error) {
@@ -194,7 +189,7 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
     .from('appointments')
     .update(appointmentToUpdate)
     .eq('id', id)
-    .select('*, patients(name)') // Fetch related patient's name after update
+    .select('*, patients(name)') 
     .single();
 
   if (error) {
@@ -217,29 +212,29 @@ export async function deleteAppointment(id: string): Promise<boolean> {
   return true;
 }
 
-// Supabase storage for image upload (Example)
-// Make sure you have a bucket named 'patient-images' or similar in your Supabase storage.
-// And that RLS policies allow uploads.
-export async function uploadPatientImage(file: File, patientId: string): Promise<string> {
+// Supabase storage for image upload
+export async function uploadPatientImage(file: File, identifier?: string): Promise<string> {
     const fileExt = file.name.split('.').pop();
-    const fileName = `${patientId}-${Date.now()}.${fileExt}`;
-    const filePath = `public/${fileName}`; // 'public' is often the folder name in the bucket
+    const uniqueIdentifier = identifier || crypto.randomUUID(); // Use provided ID or generate a UUID
+    const fileName = `${uniqueIdentifier}-${Date.now()}.${fileExt}`;
+    const filePath = `public/${fileName}`;
 
-    const { data, error } = await supabase.storage
-      .from('patient-images') // Replace with your bucket name
+    const { data, error: uploadError } = await supabase.storage
+      .from('patient-images') // Ensure this bucket exists and RLS policies are set
       .upload(filePath, file);
 
-    if (error) {
-      console.error('Error uploading image:', error);
-      throw error;
+    if (uploadError) {
+      console.error('Error uploading image:', uploadError);
+      throw uploadError;
     }
 
-    // Get public URL
     const { data: urlData } = supabase.storage
-      .from('patient-images') // Replace with your bucket name
+      .from('patient-images')
       .getPublicUrl(data.path);
       
-    if (!urlData) {
+    if (!urlData || !urlData.publicUrl) {
+        // Attempt to delete the uploaded file if URL retrieval fails, to avoid orphaned files
+        await supabase.storage.from('patient-images').remove([filePath]);
         throw new Error("Could not get public URL for uploaded image.");
     }
 

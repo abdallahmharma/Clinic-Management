@@ -7,6 +7,10 @@
 
 // تعريفات مؤقتة إذا لم يتم إنشاء الملف أعلاه بعد.
 // تأكد من أن هذه التعريفات تتطابق مع مخطط قاعدة بياناتك.
+//  **مهم:** لتغيير هذا لدعم صور متعددة، يجب عليك تعديل
+//  جدول 'patients' في Supabase. يُقترح تغيير العمود 'image_url'
+//  إلى 'image_urls' من نوع 'TEXT[]' (مصفوفة نصوص).
+//  التعريف أدناه يعكس هذا التغيير المقترح.
 
 export type Json =
   | string
@@ -26,7 +30,7 @@ export interface Database {
           age: number
           phone: string
           email: string
-          image_url: string | null
+          image_urls: string[] | null // Changed from image_url: string | null
           created_at: string 
         }
         Insert: {
@@ -35,7 +39,7 @@ export interface Database {
           age: number
           phone: string
           email: string
-          image_url?: string | null
+          image_urls?: string[] | null // Changed
           created_at?: string 
         }
         Update: {
@@ -44,7 +48,7 @@ export interface Database {
           age?: number
           phone?: string
           email?: string
-          image_url?: string | null
+          image_urls?: string[] | null // Changed
           created_at?: string 
         }
         Relationships: []

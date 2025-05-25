@@ -11,69 +11,104 @@ import { Label } from '@/components/ui/label';
 import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Patient } from '@/lib/types';
-import { addPatient, updatePatient } from '@/lib/api'; // Updated import
+import { addPatient, updatePatient, uploadPatientImage } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
+
+const MAX_FILE_SIZE_MB = 5;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
 const patientSchema = z.object({
   name: z.string().min(3, { message: "يجب أن يكون الاسم 3 أحرف على الأقل" }),
   age: z.coerce.number().min(0, { message: "يجب أن يكون العمر رقمًا موجبًا" }).max(120),
   phone: z.string().regex(/^05\d{8}$/, { message: "يجب أن يكون رقم الهاتف سعوديًا صالحًا (05xxxxxxxx)" }),
   email: z.string().email({ message: "البريد الإلكتروني غير صالح" }),
-  imageUrl: z.string().url({ message: "رابط الصورة غير صالح" }).optional().or(z.literal('')),
+  imageFiles: z.custom<FileList>()
+    .optional()
+    .refine(files => !files || files.length === 0 || Array.from(files).every(file => file.size <= MAX_FILE_SIZE_BYTES), 
+            `حجم كل ملف يجب أن لا يتجاوز ${MAX_FILE_SIZE_MB} ميجابايت.`)
+    .refine(files => !files || files.length === 0 || Array.from(files).every(file => ACCEPTED_IMAGE_TYPES.includes(file.type)),
+            "فقط صيغ .jpg, .jpeg, .png, .webp مدعومة."),
 });
 
 type PatientFormData = z.infer<typeof patientSchema>;
 
 interface PatientFormProps {
-  patient?: Patient | null; // For editing
-  onSuccess: (patient: Patient) => void; // Callback after successful submission
-  setOpen: (open: boolean) => void; // To close the dialog
+  patient?: Patient | null;
+  onSuccess: (patient: Patient) => void;
+  setOpen: (open: boolean) => void;
 }
 
 export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [existingImageUrls, setExistingImageUrls] = React.useState<string[]>(patient?.imageUrls || []);
+  const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<PatientFormData>({
+  const { register, handleSubmit, formState: { errors }, watch } = useForm<PatientFormData>({
     resolver: zodResolver(patientSchema),
     defaultValues: {
       name: patient?.name || '',
       age: patient?.age || 0,
       phone: patient?.phone || '',
       email: patient?.email || '',
-      imageUrl: patient?.imageUrl || '',
     },
   });
 
+  const imageFiles = watch("imageFiles");
+
+  React.useEffect(() => {
+    if (imageFiles && imageFiles.length > 0) {
+      setSelectedFiles(Array.from(imageFiles));
+    } else {
+      setSelectedFiles([]);
+    }
+  }, [imageFiles]);
+
   const onSubmit = async (data: PatientFormData) => {
     setIsSubmitting(true);
+    let currentImageUrls: string[] = [...existingImageUrls];
+
     try {
-      let result: Patient;
+      if (selectedFiles.length > 0) {
+        const uploadPromises = selectedFiles.map(file => 
+          uploadPatientImage(file, patient?.id) // Pass patient.id for existing, undefined for new
+        );
+        const newUploadedUrls = await Promise.all(uploadPromises);
+        currentImageUrls.push(...newUploadedUrls);
+      }
+
       const patientInputData = {
         name: data.name,
         age: Number(data.age),
         phone: data.phone,
         email: data.email,
-        imageUrl: data.imageUrl || undefined,
+        imageUrls: currentImageUrls.length > 0 ? currentImageUrls : undefined,
       };
 
-      if (patient && patient.id) { // Editing
+      let result: Patient;
+      if (patient && patient.id) {
         const updatedPatient = await updatePatient(patient.id, patientInputData);
         if (!updatedPatient) throw new Error("Failed to update patient");
         result = updatedPatient;
         toast({ title: "نجاح", description: "تم تعديل بيانات المريض بنجاح." });
-      } else { // Adding
-        result = await addPatient(patientInputData);
+      } else {
+        result = await addPatient(patientInputData as Omit<Patient, 'id' | 'createdAt'>);
         toast({ title: "نجاح", description: "تمت إضافة المريض بنجاح." });
       }
       onSuccess(result);
       setOpen(false);
     } catch (error) {
       console.error("Error submitting patient form:", error);
-      toast({ title: "خطأ", description: "حدث خطأ أثناء حفظ بيانات المريض.", variant: "destructive" });
+      const errorMessage = error instanceof Error ? error.message : "حدث خطأ أثناء حفظ بيانات المريض.";
+      toast({ title: "خطأ", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
+  };
+  
+  const handleRemoveExistingImage = (urlToRemove: string) => {
+    setExistingImageUrls(prev => prev.filter(url => url !== urlToRemove));
   };
 
   return (
@@ -111,10 +146,44 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         </div>
 
         <div>
-          <Label htmlFor="imageUrl">رابط صورة المريض (اختياري)</Label>
-          <Input id="imageUrl" {...register("imageUrl")} placeholder="https://example.com/image.png" className="mt-1" dir="ltr"/>
-          {errors.imageUrl && <p className="text-sm text-destructive mt-1">{errors.imageUrl.message}</p>}
+          <Label htmlFor="imageFiles">صور المريض (اختياري)</Label>
+          <Input id="imageFiles" type="file" multiple {...register("imageFiles")} className="mt-1" accept={ACCEPTED_IMAGE_TYPES.join(",")} />
+          {errors.imageFiles && <p className="text-sm text-destructive mt-1">{errors.imageFiles.message}</p>}
         </div>
+
+        {existingImageUrls.length > 0 && (
+          <div>
+            <Label>الصور الحالية:</Label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {existingImageUrls.map(url => (
+                <div key={url} className="relative group">
+                  <img src={url} alt="صورة مريض حالية" className="h-20 w-20 object-cover rounded-md" />
+                  <Button 
+                    type="button" 
+                    variant="destructive" 
+                    size="icon" 
+                    className="absolute top-0 right-0 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => handleRemoveExistingImage(url)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedFiles.length > 0 && (
+            <div>
+                <Label>الصور المحددة للرفع:</Label>
+                <ul className="mt-1 list-disc ps-5 text-sm text-muted-foreground">
+                    {selectedFiles.map((file, index) => (
+                        <li key={index}>{file.name} ({(file.size / 1024).toFixed(1)} KB)</li>
+                    ))}
+                </ul>
+            </div>
+        )}
+
       </div>
 
       <DialogFooter className="pt-4">

@@ -3,11 +3,11 @@
 
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2 } from 'lucide-react';
+import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2, X } from 'lucide-react'; // Added X for PatientForm
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { PatientForm } from '@/components/patients/PatientForm';
 import type { Patient } from '@/lib/types';
-import { getPatients, deletePatient as apiDeletePatient } from '@/lib/api'; // Updated import
+import { getPatients, deletePatient as apiDeletePatient } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -32,7 +32,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Keep Card for other potential uses or remove if strictly table
 
 export default function PatientsPage() {
   const [patients, setPatients] = React.useState<Patient[]>([]);
@@ -189,7 +188,11 @@ export default function PatientsPage() {
                 <TableRow key={patient.id}>
                   <TableCell className="flex justify-center">
                     <Avatar>
-                      <AvatarImage src={patient.imageUrl || undefined} alt={patient.name} data-ai-hint="person portrait"/>
+                      <AvatarImage 
+                        src={patient.imageUrls && patient.imageUrls.length > 0 ? patient.imageUrls[0] : undefined} 
+                        alt={patient.name} 
+                        data-ai-hint="person portrait"
+                      />
                       <AvatarFallback>
                         {patient.name.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
@@ -229,7 +232,7 @@ export default function PatientsPage() {
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px] p-0" dir="rtl">
-          {isFormOpen && ( // Conditionally render to reset form state on open/close
+          {isFormOpen && (
             <PatientForm 
               patient={editingPatient} 
               onSuccess={handleFormSuccess}

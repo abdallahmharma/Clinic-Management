@@ -5,7 +5,7 @@ export interface Patient {
   age: number;
   phone: string;
   email: string;
-  imageUrl?: string; // Optional, as patient might not have an image
+  imageUrls?: string[]; // Changed from imageUrl to imageUrls array
   createdAt: string; // ISO date string
 }
 
