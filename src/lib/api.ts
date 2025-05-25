@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import type { Patient, Appointment, PatientSelectItem } from './types';
+import type { Patient, Appointment } from './types';
 
 // Helper to map Supabase patient row to our Patient type
 function mapPatientRowToPatient(row: any): Patient {
@@ -62,7 +62,7 @@ export async function addPatient(patientData: Omit<Patient, 'id' | 'createdAt'>)
     name: patientData.name,
     age: patientData.age,
     phone: patientData.phone,
-    image_urls: patientData.imageUrls,
+    image_urls: patientData.imageUrls, // Ensure this is null or an array of strings
   };
   const { data, error } = await supabase
     .from('patients')
@@ -98,7 +98,8 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
   return data ? mapPatientRowToPatient(data) : null;
 }
 
-export async function deletePatient(id: string): Promise<boolean> {
+export async function deletePatient(id: string): Promise<void> {
+  // First, delete related appointments
   const { error: appointmentError } = await supabase
     .from('appointments')
     .delete()
@@ -106,24 +107,22 @@ export async function deletePatient(id: string): Promise<boolean> {
 
   if (appointmentError) {
     console.error(`Error deleting related appointments for patient ID ${id}:`, { message: appointmentError.message, details: appointmentError.details, hint: appointmentError.hint, code: appointmentError.code });
-    // Depending on requirements, you might want to throw this error or just log it and continue
+    // Decide if this error should stop the patient deletion
+    // For now, we'll throw it to make the whole operation atomic from the client's perspective
+    throw appointmentError;
   }
   
-  const { error } = await supabase
+  // Then, delete the patient
+  const { error: patientError } = await supabase
     .from('patients')
     .delete()
     .eq('id', id);
 
-  if (error) {
-    console.error(`Error deleting patient (${id}):`, { message: error.message, details: error.details, hint: error.hint, code: error.code });
-    return false;
+  if (patientError) {
+    console.error(`Error deleting patient (${id}):`, { message: patientError.message, details: patientError.details, hint: patientError.hint, code: patientError.code });
+    throw patientError; // Throw error to indicate failure
   }
-  return true;
-}
-
-export async function getPatientSelectItems(): Promise<PatientSelectItem[]> {
-  const patients = await getPatients();
-  return patients.map(p => ({ value: p.id, label: p.name }));
+  // No return needed for void, or return true if you change the signature back to Promise<boolean>
 }
 
 // Appointment Functions
@@ -197,7 +196,7 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
   return data ? mapAppointmentRowToAppointment(data) : null;
 }
 
-export async function deleteAppointment(id: string): Promise<boolean> {
+export async function deleteAppointment(id: string): Promise<void> {
   const { error } = await supabase
     .from('appointments')
     .delete()
@@ -205,40 +204,50 @@ export async function deleteAppointment(id: string): Promise<boolean> {
 
   if (error) {
     console.error(`Error deleting appointment (${id}):`, { message: error.message, details: error.details, hint: error.hint, code: error.code });
-    return false;
+    throw error; // Throw error to indicate failure
   }
-  return true;
 }
 
 // Supabase storage for image upload
 export async function uploadPatientImage(file: File, identifier?: string): Promise<string> {
     const fileExt = file.name.split('.').pop();
-    const uniqueFilePrefix = identifier || crypto.randomUUID();
+    const uniqueFilePrefix = identifier || crypto.randomUUID(); // Use provided identifier or generate a new UUID
     const fileName = `${uniqueFilePrefix}-${Date.now()}.${fileExt}`;
-    const filePath = `public/${fileName}`;
+    // It's common practice to use a 'public' folder inside your bucket for publicly accessible files.
+    // Adjust the path if your bucket structure is different.
+    const filePath = `public/${fileName}`; // Files will be stored under a 'public' folder in the bucket.
 
-    // Ensure your Supabase bucket is named 'patient-images' or change the name here.
+    // Ensure your Supabase bucket is named 'patient-images'.
     // RLS Policies for 'patient-images' bucket:
-    // 1. For UPLOADS: Authenticated users (or the appropriate role) need 'insert' permission.
-    //    SQL Example:
-    //    CREATE POLICY "Allow authenticated uploads to public folder"
-    //    ON storage.objects FOR INSERT TO authenticated
+    //
+    // 1. For PUBLIC READ ACCESS (SELECT):
+    //    Allow anyone to read objects from the 'public' folder within the 'patient-images' bucket.
+    //    This is needed for the image URLs to work directly in <img> tags or next/image.
+    //
+    //    CREATE POLICY "Public Read Access for Public Folder in Patient Images"
+    //    ON storage.objects FOR SELECT
+    //    TO public -- Or 'anon' for unauthenticated access
+    //    USING (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
+    //
+    // 2. For AUTHENTICATED UPLOADS (INSERT):
+    //    Allow authenticated users to upload (insert) objects into the 'public' folder.
+    //
+    //    CREATE POLICY "Authenticated Upload to Public Folder in Patient Images"
+    //    ON storage.objects FOR INSERT
+    //    TO authenticated
     //    WITH CHECK (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
     //
-    // 2. For VIEWING: Files in 'public/' path need to be publicly readable for getPublicUrl to work.
-    //    SQL Example:
-    //    CREATE POLICY "Public read access for public folder"
-    //    ON storage.objects FOR SELECT TO public -- or 'anon' if you prefer more explicit anonymous access
+    // 3. For AUTHENTICATED DELETES (DELETE):
+    //    Allow authenticated users to delete objects from the 'public' folder.
+    //
+    //    CREATE POLICY "Authenticated Delete from Public Folder in Patient Images"
+    //    ON storage.objects FOR DELETE
+    //    TO authenticated
     //    USING (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
     //
-    //    Alternatively, for more restrictive read access (e.g., only authenticated users):
-    //    CREATE POLICY "Authenticated read access for public folder"
-    //    ON storage.objects FOR SELECT TO authenticated
-    //    USING (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
-    //    If using restrictive read, ensure your frontend has authenticated context when fetching images.
-    //
-    //    Consider your app's security needs when defining these policies.
-    //    The `public/` prefix in `filePath` assumes images are intended to be publicly accessible via URL.
+    // Note: If your app doesn't have user authentication yet, you might temporarily use 'public' or 'anon'
+    // for INSERT/DELETE policies for testing, BUT THIS IS HIGHLY INSECURE FOR PRODUCTION.
+    // Always secure write access in a production environment.
 
     const { data, error: uploadError } = await supabase.storage
       .from('patient-images')
@@ -255,7 +264,10 @@ export async function uploadPatientImage(file: File, identifier?: string): Promi
       
     if (!urlData || !urlData.publicUrl) {
         console.warn("Uploaded image but could not get public URL. Attempting to remove orphaned file:", filePath);
-        await supabase.storage.from('patient-images').remove([filePath]);
+        // Try to remove the orphaned file to avoid clutter and potential issues.
+        await supabase.storage.from('patient-images').remove([filePath]).catch(removeError => {
+            console.error("Failed to remove orphaned file after public URL failure:", removeError, filePath);
+        });
         throw new Error("Could not get public URL for uploaded image. The file was removed to prevent orphaned storage.");
     }
 

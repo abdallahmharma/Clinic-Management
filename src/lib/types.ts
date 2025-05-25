@@ -17,9 +17,3 @@ export interface Appointment {
   notes?: string;
   createdAt: string; // ISO date string
 }
-
-// For forms, especially patient selection
-export interface PatientSelectItem {
-  value: string; // patient.id
-  label: string; // patient.name
-}

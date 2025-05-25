@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, Search, RefreshCw, CalendarHeart, Edit3, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
-import type { Appointment, Patient } from '@/lib/types'; // Changed PatientSelectItem to Patient
+import type { Appointment, Patient } from '@/lib/types'; 
 import { getAppointments, getPatients, deleteAppointment as apiDeleteAppointment } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
@@ -31,11 +31,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AppointmentsPage() {
   const [appointments, setAppointments] = React.useState<Appointment[]>([]);
-  const [patients, setPatients] = React.useState<Patient[]>([]); // Changed from PatientSelectItem[]
+  const [patients, setPatients] = React.useState<Patient[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
@@ -49,7 +48,7 @@ export default function AppointmentsPage() {
     try {
       const [appointmentsData, patientsData] = await Promise.all([
         getAppointments(),
-        getPatients(), // Changed from getPatientSelectItems
+        getPatients(), 
       ]);
       setAppointments(appointmentsData);
       setPatients(patientsData);
@@ -264,7 +263,7 @@ export default function AppointmentsPage() {
          {isFormOpen && ( 
             <AppointmentForm
               appointment={editingAppointment}
-              patients={patients} // Pass Patient[]
+              patients={patients} 
               onSuccess={handleFormSuccess}
               setOpen={setIsFormOpen}
             />

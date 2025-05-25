@@ -30,7 +30,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Added Card components for skeletons
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 import { PatientImageManagerDialog } from '@/components/patients/PatientImageManagerDialog'; // New import
