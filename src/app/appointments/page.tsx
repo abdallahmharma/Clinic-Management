@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, parse } from 'date-fns';
 import { arSA } from 'date-fns/locale';
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 
 
 export default function AppointmentsPage() {
@@ -177,4 +178,3 @@ export default function AppointmentsPage() {
     </div>
   );
 }
-
