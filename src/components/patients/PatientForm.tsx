@@ -44,16 +44,34 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
   const [existingImageUrls, setExistingImageUrls] = React.useState<string[]>(patient?.imageUrls || []);
   const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
 
-  const { register, handleSubmit, formState: { errors }, watch } = useForm<PatientFormData>({
+  const { register, handleSubmit, formState: { errors }, watch, reset } = useForm<PatientFormData>({
     resolver: zodResolver(patientSchema),
     defaultValues: {
       name: patient?.name || '',
       age: patient?.age || 0,
       phone: patient?.phone || '',
+      imageFiles: undefined,
     },
   });
 
   const imageFiles = watch("imageFiles");
+
+  React.useEffect(() => {
+    if (patient) {
+        reset({
+            name: patient.name,
+            age: patient.age,
+            phone: patient.phone,
+            imageFiles: undefined, // Clear file input on patient change
+        });
+        setExistingImageUrls(patient.imageUrls || []);
+    } else {
+        reset({ name: '', age: 0, phone: '', imageFiles: undefined });
+        setExistingImageUrls([]);
+    }
+    setSelectedFiles([]); // Clear selected files preview on patient change or new form
+  }, [patient, reset]);
+
 
   React.useEffect(() => {
     if (imageFiles && imageFiles.length > 0) {
@@ -70,7 +88,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
     try {
       if (selectedFiles.length > 0) {
         const uploadPromises = selectedFiles.map(file => 
-          uploadPatientImage(file, patient?.id) // Pass patient.id for existing, undefined for new
+          uploadPatientImage(file, patient?.id) 
         );
         const newUploadedUrls = await Promise.all(uploadPromises);
         currentImageUrls.push(...newUploadedUrls);
@@ -80,12 +98,12 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         name: data.name,
         age: Number(data.age),
         phone: data.phone,
-        imageUrls: currentImageUrls.length > 0 ? currentImageUrls : undefined,
+        imageUrls: currentImageUrls.length > 0 ? currentImageUrls : null, // Send null if no images
       };
 
       let result: Patient;
       if (patient && patient.id) {
-        const updatedPatient = await updatePatient(patient.id, patientInputData);
+        const updatedPatient = await updatePatient(patient.id, patientInputData as Partial<Omit<Patient, 'id' | 'createdAt'>>);
         if (!updatedPatient) throw new Error("Failed to update patient");
         result = updatedPatient;
         toast({ title: "نجاح", description: "تم تعديل بيانات المريض بنجاح." });
@@ -95,9 +113,9 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
       }
       onSuccess(result);
       setOpen(false);
-    } catch (error) {
-      console.error("Error submitting patient form:", error);
-      const errorMessage = error instanceof Error ? error.message : "حدث خطأ أثناء حفظ بيانات المريض.";
+    } catch (error: any) {
+      console.error("Error submitting patient form:", error.message ? { message: error.message, details: error.details, code: error.code } : error);
+      const errorMessage = error.message || "حدث خطأ أثناء حفظ بيانات المريض.";
       toast({ title: "خطأ", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -117,7 +135,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         </DialogDescription>
       </DialogHeader>
       
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto p-5 pr-2">
         <div>
           <Label htmlFor="name">الاسم الكامل</Label>
           <Input id="name" {...register("name")} className="mt-1"/>
@@ -139,7 +157,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         <div>
           <Label htmlFor="imageFiles">صور المريض (اختياري)</Label>
           <Input id="imageFiles" type="file" multiple {...register("imageFiles")} className="mt-1" accept={ACCEPTED_IMAGE_TYPES.join(",")} />
-          {errors.imageFiles && <p className="text-sm text-destructive mt-1">{errors.imageFiles.message}</p>}
+          {errors.imageFiles && <p className="text-sm text-destructive mt-1">{errors.imageFiles.message as string}</p>}
         </div>
 
         {existingImageUrls.length > 0 && (
@@ -148,12 +166,12 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
             <div className="mt-2 flex flex-wrap gap-2">
               {existingImageUrls.map(url => (
                 <div key={url} className="relative group">
-                  <img src={url} alt="صورة مريض حالية" className="h-20 w-20 object-cover rounded-md" />
+                  <img src={url} alt="صورة مريض حالية" className="h-20 w-20 object-cover rounded-md border" />
                   <Button 
                     type="button" 
                     variant="destructive" 
                     size="icon" 
-                    className="absolute top-0 right-0 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
                     onClick={() => handleRemoveExistingImage(url)}
                   >
                     <X className="h-4 w-4" />
@@ -177,7 +195,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
 
       </div>
 
-      <DialogFooter className="pt-4">
+      <DialogFooter className="pt-4 border-t p-5">
         <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>
           إلغاء
         </Button>
@@ -189,5 +207,3 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
     </form>
   );
 }
-
-    
