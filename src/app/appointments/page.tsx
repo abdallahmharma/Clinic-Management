@@ -3,10 +3,9 @@
 
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, Search, RefreshCw, CalendarHeart } from 'lucide-react';
+import { PlusCircle, Loader2, Search, RefreshCw, CalendarHeart, Edit3, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
-import { AppointmentCard } from '@/components/appointments/AppointmentCard';
 import type { Appointment, PatientSelectItem } from '@/lib/types';
 import { getAppointments, getPatientSelectItems, deleteAppointment as apiDeleteAppointment } from '@/lib/mockApi';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +13,25 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, parse } from 'date-fns';
 import { arSA } from 'date-fns/locale';
-import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 
 export default function AppointmentsPage() {
@@ -23,6 +40,8 @@ export default function AppointmentsPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
+  const [appointmentToDelete, setAppointmentToDelete] = React.useState<Appointment | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const { toast } = useToast();
 
@@ -60,13 +79,22 @@ export default function AppointmentsPage() {
     setIsFormOpen(true);
   };
 
-  const handleDeleteAppointment = async (appointmentId: string) => {
+  const confirmDeleteAppointment = (appointment: Appointment) => {
+    setAppointmentToDelete(appointment);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const handleDeleteAppointment = async () => {
+    if (!appointmentToDelete) return;
      try {
-      await apiDeleteAppointment(appointmentId); // Using mock API
-      setAppointments(prev => prev.filter(a => a.id !== appointmentId));
+      await apiDeleteAppointment(appointmentToDelete.id);
+      setAppointments(prev => prev.filter(a => a.id !== appointmentToDelete.id));
       toast({ title: "نجاح", description: "تم حذف الموعد بنجاح." });
     } catch (error) {
       toast({ title: "خطأ", description: "فشل في حذف الموعد.", variant: "destructive" });
+    } finally {
+      setIsDeleteAlertOpen(false);
+      setAppointmentToDelete(null);
     }
   };
   
@@ -123,38 +151,79 @@ export default function AppointmentsPage() {
       </div>
       
       {isLoading ? (
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i} className="shadow-lg">
-              <CardHeader className="pb-3">
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="h-5 w-1/4 ml-auto" />
-              </CardHeader>
-              <CardContent className="space-y-2 pb-4">
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </CardContent>
-              <CardFooter className="p-4 flex justify-end gap-2 border-t pt-3">
-                 <Skeleton className="h-9 w-20" />
-                 <Skeleton className="h-9 w-20" />
-              </CardFooter>
-            </Card>
-          ))}
+         <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>اسم المريض</TableHead>
+                <TableHead>التاريخ</TableHead>
+                <TableHead className="w-[100px]">الوقت</TableHead>
+                <TableHead>ملاحظات</TableHead>
+                <TableHead>تاريخ الإنشاء</TableHead>
+                <TableHead className="w-[160px] text-center">إجراءات</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-1/2" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-1/2" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-full" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
+                  <TableCell className="text-center space-x-2 rtl:space-x-reverse">
+                    <Skeleton className="h-9 w-20 inline-block" />
+                    <Skeleton className="h-9 w-20 inline-block" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       ) : filteredAppointments.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredAppointments.map((appointment) => (
-            <AppointmentCard 
-              key={appointment.id} 
-              appointment={appointment}
-              onEdit={handleEditAppointment}
-              onDelete={handleDeleteAppointment}
-            />
-          ))}
+        <div className="rounded-md border shadow-md">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>اسم المريض</TableHead>
+                <TableHead>التاريخ</TableHead>
+                <TableHead className="w-[100px]">الوقت</TableHead>
+                <TableHead>ملاحظات</TableHead>
+                <TableHead>تاريخ الإنشاء</TableHead>
+                <TableHead className="w-[160px] text-center">إجراءات</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAppointments.map((appointment) => {
+                const appointmentDate = parse(appointment.date, 'yyyy-MM-dd', new Date());
+                const formattedDisplayDate = format(appointmentDate, "EEEE, d MMMM yyyy", { locale: arSA });
+                return (
+                  <TableRow key={appointment.id}>
+                    <TableCell className="font-medium text-primary">{appointment.patientName}</TableCell>
+                    <TableCell>{formattedDisplayDate}</TableCell>
+                    <TableCell className="text-muted-foreground">{appointment.time}</TableCell>
+                    <TableCell className="text-muted-foreground truncate max-w-xs">{appointment.notes || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {format(new Date(appointment.createdAt), "dd/MM/yyyy HH:mm", { locale: arSA })}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button variant="outline" size="sm" onClick={() => handleEditAppointment(appointment)} className="ms-2">
+                        <Edit3 className="ms-1 h-4 w-4" />
+                        تعديل
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => confirmDeleteAppointment(appointment)} className="ms-2">
+                        <Trash2 className="ms-1 h-4 w-4" />
+                        حذف
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       ) : (
-        <div className="text-center py-12">
+        <div className="text-center py-12 border rounded-md shadow-sm">
           <CalendarHeart className="mx-auto h-12 w-12 text-muted-foreground" />
            <h3 className="mt-2 text-xl font-semibold">لا توجد مواعيد</h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -175,6 +244,28 @@ export default function AppointmentsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>هل أنت متأكد تمامًا؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              هذا الإجراء لا يمكن التراجع عنه. سيؤدي هذا إلى حذف بيانات الموعد لـ{" "}
+              <strong>{appointmentToDelete?.patientName}</strong> في تاريخ{" "}
+              <strong>{appointmentToDelete && format(parse(appointmentToDelete.date, 'yyyy-MM-dd', new Date()), "d MMMM yyyy", { locale: arSA })}</strong>{" "}
+              الساعة <strong>{appointmentToDelete?.time}</strong> بشكل دائم.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {setAppointmentToDelete(null); setIsDeleteAlertOpen(false);}}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteAppointment} className="bg-destructive hover:bg-destructive/90">
+              نعم، قم بالحذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+    
