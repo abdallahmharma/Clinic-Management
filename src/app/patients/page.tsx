@@ -12,6 +12,7 @@ import { getPatients, addPatient as apiAddPatient, updatePatient as apiUpdatePat
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent, CardFooter } from '@/components/ui/card'; // Added import
 
 export default function PatientsPage() {
   const [patients, setPatients] = React.useState<Patient[]>([]);
