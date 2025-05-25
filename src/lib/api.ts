@@ -62,7 +62,7 @@ export async function addPatient(patientData: Omit<Patient, 'id' | 'createdAt'>)
     name: patientData.name,
     age: patientData.age,
     phone: patientData.phone,
-    image_urls: patientData.imageUrls,
+    image_urls: patientData.imageUrls, // Ensure this matches Supabase column name
   };
   const { data, error } = await supabase
     .from('patients')
@@ -82,7 +82,7 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
    if (patientData.name !== undefined) patientToUpdate.name = patientData.name;
    if (patientData.age !== undefined) patientToUpdate.age = patientData.age;
    if (patientData.phone !== undefined) patientToUpdate.phone = patientData.phone;
-   if (patientData.imageUrls !== undefined) patientToUpdate.image_urls = patientData.imageUrls;
+   if (patientData.imageUrls !== undefined) patientToUpdate.image_urls = patientData.imageUrls; // Ensure this matches Supabase column name
 
   const { data, error } = await supabase
     .from('patients')
@@ -99,6 +99,7 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
 }
 
 export async function deletePatient(id: string): Promise<boolean> {
+  // First, delete related appointments if necessary, or handle DB constraints
   const { error: appointmentError } = await supabase
     .from('appointments')
     .delete()
@@ -106,8 +107,10 @@ export async function deletePatient(id: string): Promise<boolean> {
 
   if (appointmentError) {
     console.error('Error deleting related appointments for patient:', id, appointmentError);
+    // Depending on requirements, you might want to throw this error or just log it
   }
   
+  // Then, delete the patient
   const { error } = await supabase
     .from('patients')
     .delete()
@@ -212,12 +215,24 @@ export async function deleteAppointment(id: string): Promise<boolean> {
 // Supabase storage for image upload
 export async function uploadPatientImage(file: File, identifier?: string): Promise<string> {
     const fileExt = file.name.split('.').pop();
-    const uniqueIdentifier = identifier || crypto.randomUUID(); // Use provided ID or generate a UUID
-    const fileName = `${uniqueIdentifier}-${Date.now()}.${fileExt}`;
-    const filePath = `public/${fileName}`;
+    // Use provided ID for existing patient, or generate a UUID for new patient or if ID is not yet available
+    const uniqueFilePrefix = identifier || crypto.randomUUID();
+    const fileName = `${uniqueFilePrefix}-${Date.now()}.${fileExt}`;
+    const filePath = `public/${fileName}`; // Files are stored under a 'public' folder in the bucket
 
     const { data, error: uploadError } = await supabase.storage
-      .from('patient-images') // Ensure this bucket exists and RLS policies are set
+      .from('patient-images') // Ensure this bucket exists in Supabase Storage.
+      // RLS (Row Level Security) policies for this bucket are crucial:
+      // 1. For UPLOADS: Authenticated users (or the appropriate role for your app) must have `insert` permission.
+      //    Example policy for authenticated uploads:
+      //    CREATE POLICY "Allow authenticated uploads" ON storage.objects
+      //    FOR INSERT TO authenticated WITH CHECK (bucket_id = 'patient-images');
+      // 2. For VIEWING: Files (especially in `public/` path or specific object paths) need to be publicly readable
+      //    for `getPublicUrl` to work and images to display.
+      //    Example policy for public read on 'public' folder:
+      //    CREATE POLICY "Public read access for public folder" ON storage.objects
+      //    FOR SELECT TO public USING (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
+      //    Adjust paths and roles as per your security needs.
       .upload(filePath, file);
 
     if (uploadError) {
@@ -227,13 +242,15 @@ export async function uploadPatientImage(file: File, identifier?: string): Promi
 
     const { data: urlData } = supabase.storage
       .from('patient-images')
-      .getPublicUrl(data.path);
+      .getPublicUrl(data.path); // data.path from upload result is the filePath
       
     if (!urlData || !urlData.publicUrl) {
         // Attempt to delete the uploaded file if URL retrieval fails, to avoid orphaned files
+        console.warn("Uploaded image but could not get public URL. Attempting to remove orphaned file:", filePath);
         await supabase.storage.from('patient-images').remove([filePath]);
-        throw new Error("Could not get public URL for uploaded image.");
+        throw new Error("Could not get public URL for uploaded image. The file was removed to prevent orphaned storage.");
     }
 
     return urlData.publicUrl;
 }
+
