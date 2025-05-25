@@ -30,6 +30,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Card, CardContent } from '@/components/ui/card'; // Keep Card for other potential uses
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 
@@ -106,8 +107,7 @@ export default function PatientsPage() {
 
   const filteredPatients = patients.filter(patient =>
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.phone.includes(searchTerm) ||
-    (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    patient.phone.includes(searchTerm)
   );
 
   return (
@@ -130,7 +130,7 @@ export default function PatientsPage() {
         <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         <Input
           type="search"
-          placeholder="ابحث بالاسم، رقم الهاتف، أو البريد الإلكتروني..."
+          placeholder="ابحث بالاسم، أو رقم الهاتف..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full ps-10 py-3 text-base"
@@ -146,7 +146,6 @@ export default function PatientsPage() {
                 <TableHead>الاسم</TableHead>
                 <TableHead className="w-[70px]">العمر</TableHead>
                 <TableHead>رقم الهاتف</TableHead>
-                <TableHead>البريد الإلكتروني</TableHead>
                 <TableHead>تاريخ التسجيل</TableHead>
                 <TableHead className="w-[150px]">إجراءات</TableHead>
               </TableRow>
@@ -157,7 +156,6 @@ export default function PatientsPage() {
                   <TableCell><Skeleton className="h-10 w-10 rounded-full" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-1/2" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-full" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-full" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
                   <TableCell className="text-center space-x-2 rtl:space-x-reverse">
@@ -178,7 +176,6 @@ export default function PatientsPage() {
                 <TableHead>الاسم</TableHead>
                 <TableHead className="w-[70px] text-center">العمر</TableHead>
                 <TableHead>رقم الهاتف</TableHead>
-                <TableHead>البريد الإلكتروني</TableHead>
                 <TableHead>تاريخ التسجيل</TableHead>
                 <TableHead className="w-[160px] text-center">إجراءات</TableHead>
               </TableRow>
@@ -201,7 +198,6 @@ export default function PatientsPage() {
                   <TableCell className="font-medium text-primary">{patient.name}</TableCell>
                   <TableCell className="text-center">{patient.age}</TableCell>
                   <TableCell dir="ltr" className="text-muted-foreground">{patient.phone}</TableCell>
-                  <TableCell dir="ltr" className="text-muted-foreground">{patient.email}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {format(new Date(patient.createdAt), "dd/MM/yyyy", { locale: arSA })}
                   </TableCell>

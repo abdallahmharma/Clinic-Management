@@ -12,7 +12,7 @@ import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/co
 import { useToast } from '@/hooks/use-toast';
 import type { Patient } from '@/lib/types';
 import { addPatient, updatePatient, uploadPatientImage } from '@/lib/api';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -22,13 +22,12 @@ const patientSchema = z.object({
   name: z.string().min(3, { message: "يجب أن يكون الاسم 3 أحرف على الأقل" }),
   age: z.coerce.number().min(0, { message: "يجب أن يكون العمر رقمًا موجبًا" }).max(120),
   phone: z.string().regex(/^05\d{8}$/, { message: "يجب أن يكون رقم الهاتف سعوديًا صالحًا (05xxxxxxxx)" }),
-  email: z.string().email({ message: "البريد الإلكتروني غير صالح" }),
   imageFiles: z.custom<FileList>()
     .optional()
     .refine(files => !files || files.length === 0 || Array.from(files).every(file => file.size <= MAX_FILE_SIZE_BYTES), 
             `حجم كل ملف يجب أن لا يتجاوز ${MAX_FILE_SIZE_MB} ميجابايت.`)
     .refine(files => !files || files.length === 0 || Array.from(files).every(file => ACCEPTED_IMAGE_TYPES.includes(file.type)),
-            "فقط صيغ .jpg, .jpeg, .png, .webp مدعومة."),
+            `فقط صيغ .jpg, .jpeg, .png, .webp مدعومة.`),
 });
 
 type PatientFormData = z.infer<typeof patientSchema>;
@@ -51,7 +50,6 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
       name: patient?.name || '',
       age: patient?.age || 0,
       phone: patient?.phone || '',
-      email: patient?.email || '',
     },
   });
 
@@ -82,7 +80,6 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         name: data.name,
         age: Number(data.age),
         phone: data.phone,
-        email: data.email,
         imageUrls: currentImageUrls.length > 0 ? currentImageUrls : undefined,
       };
 
@@ -137,12 +134,6 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
           <Label htmlFor="phone">رقم الهاتف</Label>
           <Input id="phone" {...register("phone")} className="mt-1" dir="ltr" />
           {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
-        </div>
-
-        <div>
-          <Label htmlFor="email">البريد الإلكتروني</Label>
-          <Input id="email" type="email" {...register("email")} className="mt-1" dir="ltr"/>
-          {errors.email && <p className="text-sm text-destructive mt-1">{errors.email.message}</p>}
         </div>
 
         <div>

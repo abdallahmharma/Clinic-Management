@@ -9,8 +9,7 @@ function mapPatientRowToPatient(row: any): Patient {
     name: row.name,
     age: row.age,
     phone: row.phone,
-    email: row.email,
-    imageUrls: row.image_urls || [], // Changed from image_url to image_urls
+    imageUrls: row.image_urls || [],
     createdAt: row.created_at,
   };
 }
@@ -63,8 +62,7 @@ export async function addPatient(patientData: Omit<Patient, 'id' | 'createdAt'>)
     name: patientData.name,
     age: patientData.age,
     phone: patientData.phone,
-    email: patientData.email,
-    image_urls: patientData.imageUrls, // Changed from image_url
+    image_urls: patientData.imageUrls,
   };
   const { data, error } = await supabase
     .from('patients')
@@ -84,8 +82,7 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
    if (patientData.name !== undefined) patientToUpdate.name = patientData.name;
    if (patientData.age !== undefined) patientToUpdate.age = patientData.age;
    if (patientData.phone !== undefined) patientToUpdate.phone = patientData.phone;
-   if (patientData.email !== undefined) patientToUpdate.email = patientData.email;
-   if (patientData.imageUrls !== undefined) patientToUpdate.image_urls = patientData.imageUrls; // Changed
+   if (patientData.imageUrls !== undefined) patientToUpdate.image_urls = patientData.imageUrls;
 
   const { data, error } = await supabase
     .from('patients')
