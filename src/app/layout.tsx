@@ -30,7 +30,7 @@ export default function RootLayout({
         </main>
         <Toaster />
         <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-          © {new Date().getFullYear()} Clinic Management. جميع الحقوق محفوظة.
+          © {new Date().getFullYear()} ABOD OMAR
         </footer>
       </body>
     </html>
