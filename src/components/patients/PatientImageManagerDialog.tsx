@@ -39,7 +39,6 @@ interface PatientImageManagerDialogProps {
 export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUpdate }: PatientImageManagerDialogProps) {
   const { toast } = useToast();
   const [currentImageUrls, setCurrentImageUrls] = React.useState<string[]>([]);
-  const [filesToUpload, setFilesToUpload] = React.useState<File[]>([]);
   const [isUploading, setIsUploading] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState<Record<string, boolean>>({});
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -50,13 +49,15 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
     } else {
       setCurrentImageUrls([]);
     }
-    setFilesToUpload([]); // Reset files when dialog opens or patient changes
+    if (fileInputRef.current) { // Reset file input when dialog opens or patient changes
+        fileInputRef.current.value = "";
+    }
   }, [patient, isOpen]);
 
   if (!patient) return null;
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length > 0) {
       const selectedFiles = Array.from(event.target.files);
       const validFiles = selectedFiles.filter(file =>
         file.size <= MAX_FILE_SIZE_BYTES && ACCEPTED_IMAGE_TYPES.includes(file.type)
@@ -69,54 +70,44 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
           variant: "destructive",
         });
       }
-      setFilesToUpload(prev => [...prev, ...validFiles]);
-    }
-  };
 
-  const handleRemoveQueuedFile = (fileName: string) => {
-    setFilesToUpload(prev => prev.filter(f => f.name !== fileName));
-  };
-
-  const handleUploadImages = async () => {
-    if (filesToUpload.length === 0) {
-      toast({ title: "لا توجد ملفات", description: "الرجاء تحديد ملفات للرفع أولاً." });
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const uploadPromises = filesToUpload.map(file => uploadPatientImage(file, patient.id));
-      const newUploadedUrls = await Promise.all(uploadPromises);
-
-      const updatedImageUrls = [...currentImageUrls, ...newUploadedUrls];
-
-      const updatedPatientData = await updatePatient(patient.id, { imageUrls: updatedImageUrls });
-      if (updatedPatientData) {
-        setCurrentImageUrls(updatedImageUrls);
-        onImagesUpdate(updatedPatientData);
-        toast({ title: "نجاح", description: "تم تحميل الصور وتحديث بيانات المريض." });
-        setFilesToUpload([]);
-        if(fileInputRef.current) fileInputRef.current.value = ""; // Clear file input
-      } else {
-        throw new Error("Failed to update patient after image upload.");
+      if (validFiles.length === 0) {
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Clear if no valid files
+        return;
       }
-    } catch (error) {
-      console.error("Error uploading images:", error);
-      toast({ title: "خطأ في الرفع", description: "فشل في تحميل الصور. الرجاء المحاولة مرة أخرى.", variant: "destructive" });
-    } finally {
-      setIsUploading(false);
+      
+      setIsUploading(true);
+      try {
+        const uploadPromises = validFiles.map(file => uploadPatientImage(file, patient.id));
+        const newUploadedUrls = await Promise.all(uploadPromises);
+
+        const updatedImageUrls = [...currentImageUrls, ...newUploadedUrls];
+
+        const updatedPatientData = await updatePatient(patient.id, { imageUrls: updatedImageUrls });
+        if (updatedPatientData) {
+          setCurrentImageUrls(updatedImageUrls);
+          onImagesUpdate(updatedPatientData);
+          toast({ title: "نجاح", description: "تم تحميل الصور وتحديث بيانات المريض." });
+        } else {
+          throw new Error("Failed to update patient after image upload.");
+        }
+      } catch (error) {
+        console.error("Error uploading images:", error);
+        toast({ title: "خطأ في الرفع", description: "فشل في تحميل الصور. الرجاء المحاولة مرة أخرى.", variant: "destructive" });
+      } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Clear file input after processing
+      }
     }
   };
 
   const handleDeleteImage = async (imageUrlToDelete: string) => {
     setIsDeleting(prev => ({ ...prev, [imageUrlToDelete]: true }));
     try {
-      // 1. Delete from Supabase Storage
       const storagePath = getStoragePathFromUrl(imageUrlToDelete, 'patient-images');
       if (storagePath) {
         const { error: storageError } = await supabase.storage.from('patient-images').remove([storagePath]);
         if (storageError) {
-          // Log error but try to update DB anyway, as URL might be invalid or file already gone
           console.error("Error deleting image from storage:", storageError);
           toast({ title: "خطأ في الحذف من التخزين", description: `فشل حذف الصورة من التخزين: ${storageError.message}. قد تحتاج للحذف اليدوي.`, variant: "destructive", duration: 7000 });
         }
@@ -125,7 +116,6 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
         toast({ title: "تحذير", description: "لم يتمكن من تحديد مسار الصورة في التخزين للحذف.", variant: "default", duration: 7000 });
       }
 
-      // 2. Update patient's imageUrls in the database
       const updatedImageUrls = currentImageUrls.filter(url => url !== imageUrlToDelete);
       const updatedPatientData = await updatePatient(patient.id, { imageUrls: updatedImageUrls });
 
@@ -158,7 +148,9 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
 
         <div className="p-6 pt-0 space-y-6 max-h-[70vh] overflow-y-auto">
           <div>
-            <Label htmlFor="imageUpload" className="text-base font-medium">إضافة صور جديدة</Label>
+            <Label htmlFor="imageUpload" className="text-base font-medium">
+              {isUploading ? "جاري رفع الصور..." : "إضافة صور جديدة (سيتم الرفع مباشرة)"}
+            </Label>
             <div className="mt-2 flex items-center gap-2">
               <Input
                 id="imageUpload"
@@ -170,26 +162,8 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                 className="flex-grow"
                 disabled={isUploading}
               />
-              <Button onClick={handleUploadImages} disabled={isUploading || filesToUpload.length === 0} size="sm">
-                {isUploading ? <Loader2 className="ms-2 h-4 w-4 animate-spin" /> : <UploadCloud className="ms-2 h-4 w-4" />}
-                رفع المحدد
-              </Button>
+              {isUploading && <Loader2 className="h-6 w-6 animate-spin text-primary" />}
             </div>
-             {filesToUpload.length > 0 && (
-              <div className="mt-2 space-y-1 text-sm">
-                <p className="font-medium">ملفات جاهزة للرفع:</p>
-                <ul className="list-disc ps-5 text-muted-foreground">
-                  {filesToUpload.map((file, index) => (
-                    <li key={index} className="flex justify-between items-center">
-                      <span>{file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemoveQueuedFile(file.name)} disabled={isUploading}>
-                        <X className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
 
           <div className="space-y-3">
@@ -212,7 +186,7 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                           variant="destructive"
                           size="icon"
                           className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                          disabled={isDeleting[url]}
+                          disabled={isDeleting[url] || isUploading}
                         >
                           {isDeleting[url] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                         </Button>
@@ -242,7 +216,7 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
         </div>
 
         <DialogFooter className="p-6 pt-4 border-t">
-          <Button variant="outline" onClick={closeDialog}>إغلاق</Button>
+          <Button variant="outline" onClick={closeDialog} disabled={isUploading}>إغلاق</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
