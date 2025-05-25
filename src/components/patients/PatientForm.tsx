@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Patient } from '@/lib/types';
+import { addPatient, updatePatient } from '@/lib/api'; // Updated import
 import { Loader2 } from 'lucide-react';
 
 const patientSchema = z.object({
@@ -47,21 +48,28 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
   const onSubmit = async (data: PatientFormData) => {
     setIsSubmitting(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
       let result: Patient;
-      if (patient) { // Editing
-        result = { ...patient, ...data, age: Number(data.age) }; 
-        // In real app: await updatePatient(patient.id, data);
+      const patientInputData = {
+        name: data.name,
+        age: Number(data.age),
+        phone: data.phone,
+        email: data.email,
+        imageUrl: data.imageUrl || undefined,
+      };
+
+      if (patient && patient.id) { // Editing
+        const updatedPatient = await updatePatient(patient.id, patientInputData);
+        if (!updatedPatient) throw new Error("Failed to update patient");
+        result = updatedPatient;
         toast({ title: "نجاح", description: "تم تعديل بيانات المريض بنجاح." });
       } else { // Adding
-        result = { id: String(Date.now()), createdAt: new Date().toISOString(), ...data, age: Number(data.age) };
-        // In real app: await addPatient(data);
+        result = await addPatient(patientInputData);
         toast({ title: "نجاح", description: "تمت إضافة المريض بنجاح." });
       }
       onSuccess(result);
       setOpen(false);
     } catch (error) {
+      console.error("Error submitting patient form:", error);
       toast({ title: "خطأ", description: "حدث خطأ أثناء حفظ بيانات المريض.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);

@@ -7,7 +7,7 @@ import { PlusCircle, Loader2, Search, RefreshCw, CalendarHeart, Edit3, Trash2 } 
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
 import type { Appointment, PatientSelectItem } from '@/lib/types';
-import { getAppointments, getPatientSelectItems, deleteAppointment as apiDeleteAppointment } from '@/lib/mockApi';
+import { getAppointments, getPatientSelectItems, deleteAppointment as apiDeleteAppointment } from '@/lib/api'; // Updated import
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,9 +30,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Keep Card for other potential uses
 
 export default function AppointmentsPage() {
   const [appointments, setAppointments] = React.useState<Appointment[]>([]);
@@ -55,6 +54,7 @@ export default function AppointmentsPage() {
       setAppointments(appointmentsData);
       setPatients(patientsData);
     } catch (error) {
+      console.error("Fetch appointments data error:", error);
       toast({ title: "خطأ", description: "فشل في تحميل البيانات.", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -91,6 +91,7 @@ export default function AppointmentsPage() {
       setAppointments(prev => prev.filter(a => a.id !== appointmentToDelete.id));
       toast({ title: "نجاح", description: "تم حذف الموعد بنجاح." });
     } catch (error) {
+      console.error("Delete appointment error:", error);
       toast({ title: "خطأ", description: "فشل في حذف الموعد.", variant: "destructive" });
     } finally {
       setIsDeleteAlertOpen(false);
@@ -113,8 +114,18 @@ export default function AppointmentsPage() {
   };
   
   const filteredAppointments = appointments.filter(appointment => {
-    const appointmentDate = parse(appointment.date, 'yyyy-MM-dd', new Date());
-    const formattedDate = format(appointmentDate, "d MMMM yyyy", { locale: arSA }); // For searching by formatted date
+    // Ensure appointment.date is valid before parsing
+     let appointmentDate;
+    try {
+        appointmentDate = parse(appointment.date, 'yyyy-MM-dd', new Date());
+         if (isNaN(appointmentDate.getTime())) { // Check if parsing resulted in a valid date
+            return false; // or handle as needed
+        }
+    } catch (e) {
+        console.warn(`Invalid date format for appointment ID ${appointment.id}: ${appointment.date}`);
+        return false; // Skip this appointment if date is invalid
+    }
+    const formattedDate = format(appointmentDate, "d MMMM yyyy", { locale: arSA }); 
     return (
       appointment.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       appointment.time.includes(searchTerm) ||
@@ -195,8 +206,25 @@ export default function AppointmentsPage() {
             </TableHeader>
             <TableBody>
               {filteredAppointments.map((appointment) => {
-                const appointmentDate = parse(appointment.date, 'yyyy-MM-dd', new Date());
-                const formattedDisplayDate = format(appointmentDate, "EEEE, d MMMM yyyy", { locale: arSA });
+                let appointmentDate;
+                let formattedDisplayDate = "تاريخ غير صالح";
+                try {
+                    appointmentDate = parse(appointment.date, 'yyyy-MM-dd', new Date());
+                    if (isNaN(appointmentDate.getTime())) throw new Error("Invalid date");
+                    formattedDisplayDate = format(appointmentDate, "EEEE, d MMMM yyyy", { locale: arSA });
+                } catch (e) {
+                     // formattedDisplayDate remains "تاريخ غير صالح"
+                }
+                
+                let formattedCreatedAt = "تاريخ غير صالح";
+                try {
+                    const createdAtDate = new Date(appointment.createdAt);
+                    if (isNaN(createdAtDate.getTime())) throw new Error("Invalid created at date");
+                    formattedCreatedAt = format(createdAtDate, "dd/MM/yyyy HH:mm", { locale: arSA });
+                } catch (e) {
+                     // formattedCreatedAt remains "تاريخ غير صالح"
+                }
+
                 return (
                   <TableRow key={appointment.id}>
                     <TableCell className="font-medium text-primary">{appointment.patientName}</TableCell>
@@ -204,7 +232,7 @@ export default function AppointmentsPage() {
                     <TableCell className="text-muted-foreground">{appointment.time}</TableCell>
                     <TableCell className="text-muted-foreground truncate max-w-xs">{appointment.notes || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {format(new Date(appointment.createdAt), "dd/MM/yyyy HH:mm", { locale: arSA })}
+                      {formattedCreatedAt}
                     </TableCell>
                     <TableCell className="text-center">
                       <Button variant="outline" size="sm" onClick={() => handleEditAppointment(appointment)} className="ms-2">
@@ -234,7 +262,7 @@ export default function AppointmentsPage() {
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px] p-0" dir="rtl">
-         {isFormOpen && (
+         {isFormOpen && ( // Conditionally render to reset form state
             <AppointmentForm
               appointment={editingAppointment}
               patients={patients}
@@ -252,7 +280,7 @@ export default function AppointmentsPage() {
             <AlertDialogDescription>
               هذا الإجراء لا يمكن التراجع عنه. سيؤدي هذا إلى حذف بيانات الموعد لـ{" "}
               <strong>{appointmentToDelete?.patientName}</strong> في تاريخ{" "}
-              <strong>{appointmentToDelete && format(parse(appointmentToDelete.date, 'yyyy-MM-dd', new Date()), "d MMMM yyyy", { locale: arSA })}</strong>{" "}
+              <strong>{appointmentToDelete && !isNaN(parse(appointmentToDelete.date, 'yyyy-MM-dd', new Date()).getTime()) ? format(parse(appointmentToDelete.date, 'yyyy-MM-dd', new Date()), "d MMMM yyyy", { locale: arSA }) : "غير محدد"}</strong>{" "}
               الساعة <strong>{appointmentToDelete?.time}</strong> بشكل دائم.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -267,5 +295,3 @@ export default function AppointmentsPage() {
     </div>
   );
 }
-
-    

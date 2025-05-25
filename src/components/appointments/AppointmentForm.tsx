@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form'; // Added Controller
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Appointment, PatientSelectItem } from '@/lib/types';
+import { addAppointment, updateAppointment } from '@/lib/api'; // Updated import
 import { format, parse } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 import { CalendarIcon, Loader2 } from 'lucide-react';
@@ -68,29 +69,28 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
 
   const onSubmit = async (data: AppointmentFormData) => {
     setIsSubmitting(true);
-    const formattedData = {
-      ...data,
-      date: format(data.date, 'yyyy-MM-dd'), // Ensure date is string for API
+    const appointmentInputData = {
+      patientId: data.patientId,
+      date: format(data.date, 'yyyy-MM-dd'),
+      time: data.time,
+      notes: data.notes || undefined,
     };
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
       let result: Appointment;
-      const patientName = patients.find(p => p.value === data.patientId)?.label || 'اسم غير معروف';
-
-      if (appointment) { // Editing
-        result = { ...appointment, ...formattedData, patientName };
-        // In real app: await updateAppointment(appointment.id, formattedData);
+      if (appointment && appointment.id) { // Editing
+        const updatedAppointment = await updateAppointment(appointment.id, appointmentInputData);
+        if (!updatedAppointment) throw new Error("Failed to update appointment");
+        result = updatedAppointment;
         toast({ title: "نجاح", description: "تم تعديل الموعد بنجاح." });
       } else { // Adding
-        result = { id: String(Date.now()), createdAt: new Date().toISOString(), ...formattedData, patientName };
-        // In real app: await addAppointment(formattedData);
+        result = await addAppointment(appointmentInputData);
         toast({ title: "نجاح", description: "تمت إضافة الموعد بنجاح." });
       }
       onSuccess(result);
       setOpen(false);
     } catch (error) {
+      console.error("Error submitting appointment form:", error);
       toast({ title: "خطأ", description: "حدث خطأ أثناء حفظ الموعد.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -176,7 +176,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
           {appointment ? 'حفظ التعديلات' : 'إضافة موعد'}
         </Button>
       </DialogFooter>
-      {patients.length === 0 && <p className="text-sm text-destructive text-center pt-2">يجب إضافة مرضى أولاً لتتمكن من إضافة موعد.</p>}
+      {patients.length === 0 && !isSubmitting && <p className="text-sm text-destructive text-center pt-2">يجب إضافة مرضى أولاً لتتمكن من إضافة موعد.</p>}
     </form>
   );
 }

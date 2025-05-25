@@ -2,13 +2,12 @@
 "use client";
 
 import * as React from 'react';
-import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2, User as UserIcon } from 'lucide-react';
+import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { PatientForm } from '@/components/patients/PatientForm';
 import type { Patient } from '@/lib/types';
-import { getPatients, deletePatient as apiDeletePatient } from '@/lib/mockApi';
+import { getPatients, deletePatient as apiDeletePatient } from '@/lib/api'; // Updated import
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -29,11 +28,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Keep Card for other potential uses or remove if strictly table
 
 export default function PatientsPage() {
   const [patients, setPatients] = React.useState<Patient[]>([]);
@@ -51,6 +50,7 @@ export default function PatientsPage() {
       const data = await getPatients();
       setPatients(data);
     } catch (error) {
+      console.error("Fetch patients error:", error);
       toast({ title: "خطأ", description: "فشل في تحميل قائمة المرضى.", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -83,6 +83,7 @@ export default function PatientsPage() {
       setPatients(prev => prev.filter(p => p.id !== patientToDelete.id));
       toast({ title: "نجاح", description: `تم حذف المريض ${patientToDelete.name} بنجاح.` });
     } catch (error) {
+      console.error("Delete patient error:", error);
       toast({ title: "خطأ", description: "فشل في حذف المريض.", variant: "destructive" });
     } finally {
       setIsDeleteAlertOpen(false);
@@ -91,11 +92,11 @@ export default function PatientsPage() {
   };
 
   const handleFormSuccess = (updatedPatient: Patient) => {
-    if (editingPatient) { // Edit
+    if (editingPatient) { 
       setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       );
-    } else { // Add
+    } else { 
       setPatients(prev => [updatedPatient, ...prev]
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       );
@@ -107,7 +108,7 @@ export default function PatientsPage() {
   const filteredPatients = patients.filter(patient =>
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     patient.phone.includes(searchTerm) ||
-    patient.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -160,9 +161,9 @@ export default function PatientsPage() {
                   <TableCell><Skeleton className="h-4 w-full" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-full" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
-                  <TableCell className="flex gap-2">
-                    <Skeleton className="h-9 w-20" />
-                    <Skeleton className="h-9 w-20" />
+                  <TableCell className="text-center space-x-2 rtl:space-x-reverse">
+                    <Skeleton className="h-9 w-20 inline-block" />
+                    <Skeleton className="h-9 w-20 inline-block" />
                   </TableCell>
                 </TableRow>
               ))}
@@ -188,7 +189,7 @@ export default function PatientsPage() {
                 <TableRow key={patient.id}>
                   <TableCell className="flex justify-center">
                     <Avatar>
-                      <AvatarImage src={patient.imageUrl || undefined} alt={patient.name} data-ai-hint="person portrait" />
+                      <AvatarImage src={patient.imageUrl || undefined} alt={patient.name} data-ai-hint="person portrait"/>
                       <AvatarFallback>
                         {patient.name.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
@@ -228,7 +229,7 @@ export default function PatientsPage() {
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px] p-0" dir="rtl">
-          {isFormOpen && (
+          {isFormOpen && ( // Conditionally render to reset form state on open/close
             <PatientForm 
               patient={editingPatient} 
               onSuccess={handleFormSuccess}
@@ -248,7 +249,7 @@ export default function PatientsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPatientToDelete(null)}>إلغاء</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => {setPatientToDelete(null); setIsDeleteAlertOpen(false);}}>إلغاء</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeletePatient} className="bg-destructive hover:bg-destructive/90">
               نعم، قم بالحذف
             </AlertDialogAction>

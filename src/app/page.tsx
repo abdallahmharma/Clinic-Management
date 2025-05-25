@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from 'react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns'; // Removed parseISO as it's not used
 import { arSA } from 'date-fns/locale';
 import { Calendar as CalendarIcon, Users, CalendarPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DailyAppointments } from '@/components/dashboard/DailyAppointments';
 import type { Appointment } from '@/lib/types';
-import { getAppointmentsByDate } from '@/lib/mockApi'; // Using mock API
+import { getAppointmentsByDate } from '@/lib/api'; // Using new API
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -31,7 +31,8 @@ export default function DashboardPage() {
           setIsLoading(false);
         })
         .catch(error => {
-          console.error("Failed to fetch appointments:", error);
+          console.error("Failed to fetch appointments for dashboard:", error);
+          // Optionally, show a toast to the user
           setIsLoading(false);
         });
     }
@@ -93,8 +94,11 @@ export default function DashboardPage() {
              <Calendar
                 mode="single"
                 selected={selectedDate}
-                onSelect={setSelectedDate}
-                className="rounded-md border p-0 hidden lg:block" // Show full calendar on larger screens
+                onSelect={(date) => { // Ensure calendarOpen closes if it was used
+                    setSelectedDate(date);
+                    if(calendarOpen) setCalendarOpen(false);
+                }}
+                className="rounded-md border p-0 hidden lg:block" 
                 locale={arSA}
                 dir="rtl"
               />

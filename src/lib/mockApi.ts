@@ -1,4 +1,8 @@
 
+// هذا الملف لم يعد مستخدماً. تم استبداله بـ src/lib/api.ts الذي يستخدم Supabase.
+// يمكنك حذف هذا الملف إذا أردت.
+// أبقيته هنا مؤقتًا كمرجع إذا احتجت إلى مقارنة الدوال.
+
 import type { Patient, Appointment, PatientSelectItem } from './types';
 import { format } from 'date-fns';
 
