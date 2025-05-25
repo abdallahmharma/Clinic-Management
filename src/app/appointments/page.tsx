@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, Search, RefreshCw, CalendarHeart, Edit3, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
-import type { Appointment, PatientSelectItem } from '@/lib/types';
-import { getAppointments, getPatientSelectItems, deleteAppointment as apiDeleteAppointment } from '@/lib/api'; // Updated import
+import type { Appointment, Patient } from '@/lib/types'; // Changed PatientSelectItem to Patient
+import { getAppointments, getPatients, deleteAppointment as apiDeleteAppointment } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -31,11 +31,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Keep Card for other potential uses
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AppointmentsPage() {
   const [appointments, setAppointments] = React.useState<Appointment[]>([]);
-  const [patients, setPatients] = React.useState<PatientSelectItem[]>([]);
+  const [patients, setPatients] = React.useState<Patient[]>([]); // Changed from PatientSelectItem[]
   const [isLoading, setIsLoading] = React.useState(true);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
@@ -49,7 +49,7 @@ export default function AppointmentsPage() {
     try {
       const [appointmentsData, patientsData] = await Promise.all([
         getAppointments(),
-        getPatientSelectItems(),
+        getPatients(), // Changed from getPatientSelectItems
       ]);
       setAppointments(appointmentsData);
       setPatients(patientsData);
@@ -114,16 +114,15 @@ export default function AppointmentsPage() {
   };
   
   const filteredAppointments = appointments.filter(appointment => {
-    // Ensure appointment.date is valid before parsing
      let appointmentDate;
     try {
         appointmentDate = parse(appointment.date, 'yyyy-MM-dd', new Date());
-         if (isNaN(appointmentDate.getTime())) { // Check if parsing resulted in a valid date
-            return false; // or handle as needed
+         if (isNaN(appointmentDate.getTime())) { 
+            return false; 
         }
     } catch (e) {
         console.warn(`Invalid date format for appointment ID ${appointment.id}: ${appointment.date}`);
-        return false; // Skip this appointment if date is invalid
+        return false; 
     }
     const formattedDate = format(appointmentDate, "d MMMM yyyy", { locale: arSA }); 
     return (
@@ -262,10 +261,10 @@ export default function AppointmentsPage() {
 
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="sm:max-w-[500px] p-0" dir="rtl">
-         {isFormOpen && ( // Conditionally render to reset form state
+         {isFormOpen && ( 
             <AppointmentForm
               appointment={editingAppointment}
-              patients={patients}
+              patients={patients} // Pass Patient[]
               onSuccess={handleFormSuccess}
               setOpen={setIsFormOpen}
             />
