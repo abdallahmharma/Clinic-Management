@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2, X } from 'lucide-react'; // Added X for PatientForm
+import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2, X, Image as ImageIcon } from 'lucide-react'; // Added X and ImageIcon
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { PatientForm } from '@/components/patients/PatientForm';
 import type { Patient } from '@/lib/types';
@@ -30,9 +30,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent } from '@/components/ui/card'; // Keep Card for other potential uses
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Added Card components for skeletons
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
+import { PatientImageManagerDialog } from '@/components/patients/PatientImageManagerDialog'; // New import
 
 export default function PatientsPage() {
   const [patients, setPatients] = React.useState<Patient[]>([]);
@@ -43,6 +44,9 @@ export default function PatientsPage() {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const { toast } = useToast();
+
+  const [selectedPatientForImageManagement, setSelectedPatientForImageManagement] = React.useState<Patient | null>(null);
+  const [isImageManagerOpen, setIsImageManagerOpen] = React.useState(false);
 
   const fetchPatients = React.useCallback(async () => {
     setIsLoading(true);
@@ -104,6 +108,11 @@ export default function PatientsPage() {
     setIsFormOpen(false);
     setEditingPatient(null);
   };
+  
+  const handlePatientImagesUpdate = (updatedPatient: Patient) => {
+    setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p));
+    // Optionally: setIsImageManagerOpen(false); // if you want to close dialog automatically
+  };
 
   const filteredPatients = patients.filter(patient =>
     patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -142,25 +151,26 @@ export default function PatientsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[80px]">الصورة</TableHead>
+                <TableHead className="w-[80px] text-center">الصورة</TableHead>
                 <TableHead>الاسم</TableHead>
-                <TableHead className="w-[70px]">العمر</TableHead>
+                <TableHead className="w-[70px] text-center">العمر</TableHead>
                 <TableHead>رقم الهاتف</TableHead>
                 <TableHead>تاريخ التسجيل</TableHead>
-                <TableHead className="w-[150px]">إجراءات</TableHead>
+                <TableHead className="w-[200px] text-center">إجراءات</TableHead> 
               </TableRow>
             </TableHeader>
             <TableBody>
               {[...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-10 w-10 rounded-full" /></TableCell>
+                  <TableCell className="flex justify-center"><Skeleton className="h-10 w-10 rounded-full" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-1/2" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-full" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
-                  <TableCell className="text-center space-x-2 rtl:space-x-reverse">
-                    <Skeleton className="h-9 w-20 inline-block" />
-                    <Skeleton className="h-9 w-20 inline-block" />
+                  <TableCell className="text-center space-x-1 rtl:space-x-reverse">
+                    <Skeleton className="h-9 w-[70px] inline-block" />
+                    <Skeleton className="h-9 w-[70px] inline-block" />
+                    <Skeleton className="h-9 w-[40px] inline-block" />
                   </TableCell>
                 </TableRow>
               ))}
@@ -177,36 +187,59 @@ export default function PatientsPage() {
                 <TableHead className="w-[70px] text-center">العمر</TableHead>
                 <TableHead>رقم الهاتف</TableHead>
                 <TableHead>تاريخ التسجيل</TableHead>
-                <TableHead className="w-[160px] text-center">إجراءات</TableHead>
+                <TableHead className="w-[200px] text-center">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredPatients.map((patient) => (
                 <TableRow key={patient.id}>
                   <TableCell className="flex justify-center">
-                    <Avatar>
-                      <AvatarImage 
-                        src={patient.imageUrls && patient.imageUrls.length > 0 ? patient.imageUrls[0] : undefined} 
-                        alt={patient.name} 
-                        data-ai-hint="person portrait"
-                      />
-                      <AvatarFallback>
-                        {patient.name.substring(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
+                    <button 
+                      onClick={() => {
+                        setSelectedPatientForImageManagement(patient);
+                        setIsImageManagerOpen(true);
+                      }}
+                      className="rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                      aria-label={`إدارة صور ${patient.name}`}
+                    >
+                      <Avatar>
+                        <AvatarImage 
+                          src={patient.imageUrls && patient.imageUrls.length > 0 ? patient.imageUrls[0] : undefined} 
+                          alt={patient.name} 
+                          data-ai-hint="person portrait"
+                          className="object-cover"
+                        />
+                        <AvatarFallback>
+                          {patient.name.substring(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </button>
                   </TableCell>
                   <TableCell className="font-medium text-primary">{patient.name}</TableCell>
                   <TableCell className="text-center">{patient.age}</TableCell>
-                  <TableCell dir="ltr" className="text-muted-foreground">{patient.phone}</TableCell>
+                  <TableCell dir="ltr" className="text-muted-foreground text-left">{patient.phone}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {format(new Date(patient.createdAt), "dd/MM/yyyy", { locale: arSA })}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Button variant="outline" size="sm" onClick={() => handleEditPatient(patient)} className="ms-2">
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setSelectedPatientForImageManagement(patient);
+                          setIsImageManagerOpen(true);
+                        }} 
+                        className="ms-1"
+                        aria-label={`إدارة صور ${patient.name}`}
+                      >
+                        <ImageIcon className="ms-1 h-4 w-4" />
+                        صور
+                      </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleEditPatient(patient)} className="ms-1">
                       <Edit3 className="ms-1 h-4 w-4" />
                       تعديل
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={() => confirmDeletePatient(patient)} className="ms-2">
+                    <Button variant="destructive" size="sm" onClick={() => confirmDeletePatient(patient)} className="ms-1">
                       <Trash2 className="ms-1 h-4 w-4" />
                       حذف
                     </Button>
@@ -238,13 +271,22 @@ export default function PatientsPage() {
         </DialogContent>
       </Dialog>
 
+      {selectedPatientForImageManagement && (
+        <PatientImageManagerDialog
+            patient={selectedPatientForImageManagement}
+            isOpen={isImageManagerOpen}
+            setOpen={setIsImageManagerOpen}
+            onImagesUpdate={handlePatientImagesUpdate}
+        />
+      )}
+
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
             <AlertDialogTitle>هل أنت متأكد تمامًا؟</AlertDialogTitle>
             <AlertDialogDescription>
               هذا الإجراء لا يمكن التراجع عنه. سيؤدي هذا إلى حذف بيانات المريض{" "}
-              <strong>{patientToDelete?.name}</strong> بشكل دائم وجميع مواعيده المرتبطة به.
+              <strong>{patientToDelete?.name}</strong> بشكل دائم وجميع مواعيده وصوره المرتبطة به.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
