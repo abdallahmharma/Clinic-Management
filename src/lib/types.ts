@@ -15,6 +15,7 @@ export interface Appointment {
   patientName: string; // Denormalized for easier display
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
+  type: string; // e.g., 'Check-up', 'Consultation'
   notes?: string;
   createdAt: string; // ISO date string
 }

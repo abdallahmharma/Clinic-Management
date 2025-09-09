@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import type { Appointment, Patient } from '@/lib/types'; // Changed PatientSelectItem to Patient
+import type { Appointment, Patient } from '@/lib/types';
 import { addAppointment, updateAppointment } from '@/lib/api';
 import { format, parse } from 'date-fns';
 import { arSA } from 'date-fns/locale';
@@ -27,19 +27,35 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const appointmentSchema = z.object({
   patientId: z.string().min(1, { message: "يجب اختيار مريض" }),
   date: z.date({ required_error: "يجب اختيار تاريخ الموعد" }),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "يجب أن يكون الوقت صالحًا (HH:MM)" }),
+  type: z.string().min(1, { message: "يجب اختيار نوع الموعد" }),
   notes: z.string().optional(),
 });
 
 type AppointmentFormData = z.infer<typeof appointmentSchema>;
 
+const appointmentTypes = [
+  "كشف جديد",
+  "متابعة",
+  "استشارة",
+  "إجراء طبي",
+  "غير ذلك",
+];
+
 interface AppointmentFormProps {
   appointment?: Appointment | null;
-  patients: Patient[]; // Changed from PatientSelectItem[]
+  patients: Patient[];
   onSuccess: (appointment: Appointment) => void;
   setOpen: (open: boolean) => void;
 }
@@ -52,8 +68,6 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
   );
   const [calendarOpen, setCalendarOpen] = React.useState(false);
   const [patientComboboxOpen, setPatientComboboxOpen] = React.useState(false);
-  const [selectedPatientId, setSelectedPatientId] = React.useState<string | undefined>(appointment?.patientId);
-
 
   const { register, handleSubmit, control, setValue, watch, formState: { errors } } = useForm<AppointmentFormData>({
     resolver: zodResolver(appointmentSchema),
@@ -61,11 +75,10 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
       patientId: appointment?.patientId || '',
       date: appointment ? parse(appointment.date, 'yyyy-MM-dd', new Date()) : new Date(),
       time: appointment?.time || '09:00',
+      type: appointment?.type || '',
       notes: appointment?.notes || '',
     },
   });
-
-  const currentPatientId = watch("patientId");
 
   React.useEffect(() => {
     if (selectedDate) {
@@ -85,6 +98,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
       patientId: data.patientId,
       date: format(data.date, 'yyyy-MM-dd'),
       time: data.time,
+      type: data.type,
       notes: data.notes || undefined,
     };
 
@@ -112,7 +126,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
   const patientSelectItems = patients.map(p => ({
     value: p.id,
     label: p.name,
-    phone: p.phone // Include phone for searching
+    phone: p.phone
   }));
 
   return (
@@ -155,7 +169,6 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
                         const phoneMatch = patient.phone.includes(search);
                         if (nameMatch || phoneMatch) return 1;
                       } else if (value.toLowerCase().includes(search.toLowerCase())) { 
-                        // Fallback for initial cmdk filtering before full object is known
                         return 1;
                       }
                       return 0;
@@ -168,11 +181,9 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
                         {patientSelectItems.map((p) => (
                           <CommandItem
                             key={p.value}
-                            value={p.value} // Use patient ID as the core value for cmdk
+                            value={p.value}
                             onSelect={(currentValue) => {
-                              // currentValue is p.value (the id)
                               setValue("patientId", currentValue === field.value ? "" : currentValue, { shouldValidate: true });
-                              setSelectedPatientId(currentValue === field.value ? undefined : currentValue);
                               setPatientComboboxOpen(false);
                             }}
                           >
@@ -193,6 +204,27 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
             )}
           />
           {errors.patientId && <p className="text-sm text-destructive mt-1">{errors.patientId.message}</p>}
+        </div>
+
+        <div>
+          <Label htmlFor="type">نوع الموعد</Label>
+          <Controller
+            name="type"
+            control={control}
+            render={({ field }) => (
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <SelectTrigger className="w-full mt-1">
+                  <SelectValue placeholder="اختر نوع الموعد..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {appointmentTypes.map(type => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.type && <p className="text-sm text-destructive mt-1">{errors.type.message}</p>}
         </div>
 
         <div>
@@ -247,4 +279,3 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
     </form>
   );
 }
-

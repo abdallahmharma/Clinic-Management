@@ -22,6 +22,7 @@ function mapAppointmentRowToAppointment(row: any): Appointment {
     patientName: row.patients?.name || 'اسم غير معروف', // Assuming 'patients' is the related table
     date: row.date,
     time: row.time,
+    type: row.type || 'غير محدد',
     notes: row.notes || undefined,
     createdAt: row.created_at,
   };
@@ -160,6 +161,7 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
     patient_id: appointmentData.patientId,
     date: appointmentData.date,
     time: appointmentData.time,
+    type: appointmentData.type,
     notes: appointmentData.notes,
   };
   const { data, error } = await supabase
@@ -180,6 +182,7 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
   if (appointmentData.patientId !== undefined) appointmentToUpdate.patient_id = appointmentData.patientId;
   if (appointmentData.date !== undefined) appointmentToUpdate.date = appointmentData.date;
   if (appointmentData.time !== undefined) appointmentToUpdate.time = appointmentData.time;
+  if (appointmentData.type !== undefined) appointmentToUpdate.type = appointmentData.type;
   if (appointmentData.notes !== undefined) appointmentToUpdate.notes = appointmentData.notes;
 
   const { data, error } = await supabase

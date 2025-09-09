@@ -56,6 +56,7 @@ export interface Database {
           patient_id: string
           date: string // YYYY-MM-DD
           time: string // HH:MM
+          type: string
           notes: string | null
           created_at: string
         }
@@ -64,6 +65,7 @@ export interface Database {
           patient_id: string
           date: string
           time: string
+          type: string
           notes?: string | null
           created_at?: string
         }
@@ -72,6 +74,7 @@ export interface Database {
           patient_id?: string
           date?: string
           time?: string
+          type?: string
           notes?: string | null
           created_at?: string
         }

@@ -31,6 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from '@/components/ui/badge';
 
 export default function AppointmentsPage() {
   const [appointments, setAppointments] = React.useState<Appointment[]>([]);
@@ -127,6 +128,7 @@ export default function AppointmentsPage() {
     return (
       appointment.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       appointment.time.includes(searchTerm) ||
+      appointment.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
       formattedDate.includes(searchTerm) ||
       (appointment.notes && appointment.notes.toLowerCase().includes(searchTerm.toLowerCase()))
     );
@@ -152,7 +154,7 @@ export default function AppointmentsPage() {
         <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         <Input
           type="search"
-          placeholder="ابحث باسم المريض، التاريخ، الوقت أو الملاحظات..."
+          placeholder="ابحث باسم المريض، التاريخ، الوقت، النوع أو الملاحظات..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full ps-10 py-3 text-base"
@@ -167,6 +169,7 @@ export default function AppointmentsPage() {
                 <TableHead>اسم المريض</TableHead>
                 <TableHead>التاريخ</TableHead>
                 <TableHead className="w-[100px]">الوقت</TableHead>
+                <TableHead>النوع</TableHead>
                 <TableHead>ملاحظات</TableHead>
                 <TableHead>تاريخ الإنشاء</TableHead>
                 <TableHead className="w-[160px] text-center">إجراءات</TableHead>
@@ -176,6 +179,7 @@ export default function AppointmentsPage() {
               {[...Array(5)].map((_, i) => (
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-4 w-3/4" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-1/2" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-1/2" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-1/2" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-full" /></TableCell>
@@ -197,6 +201,7 @@ export default function AppointmentsPage() {
                 <TableHead>اسم المريض</TableHead>
                 <TableHead>التاريخ</TableHead>
                 <TableHead className="w-[100px]">الوقت</TableHead>
+                <TableHead>النوع</TableHead>
                 <TableHead>ملاحظات</TableHead>
                 <TableHead>تاريخ الإنشاء</TableHead>
                 <TableHead className="w-[160px] text-center">إجراءات</TableHead>
@@ -228,6 +233,7 @@ export default function AppointmentsPage() {
                     <TableCell className="font-medium text-primary">{appointment.patientName}</TableCell>
                     <TableCell>{formattedDisplayDate}</TableCell>
                     <TableCell className="text-muted-foreground">{appointment.time}</TableCell>
+                    <TableCell><Badge variant="outline">{appointment.type}</Badge></TableCell>
                     <TableCell className="text-muted-foreground truncate max-w-xs">{appointment.notes || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {formattedCreatedAt}
