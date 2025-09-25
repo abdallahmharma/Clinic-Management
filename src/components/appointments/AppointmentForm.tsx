@@ -46,11 +46,16 @@ const appointmentSchema = z.object({
 type AppointmentFormData = z.infer<typeof appointmentSchema>;
 
 const appointmentTypes = [
-  "كشف جديد",
-  "متابعة",
+  "فيلر",
+  "بوتكس",
+  "بشرة",
+  "نضارة",
+  "ميزو",
+  "بلازمة",
+  "علاج بشرة",
+  "ليزر",
+  "اسنان",
   "استشارة",
-  "إجراء طبي",
-  "غير ذلك",
 ];
 
 interface AppointmentFormProps {
