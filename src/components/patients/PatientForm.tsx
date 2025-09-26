@@ -48,7 +48,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
     resolver: zodResolver(patientSchema),
     defaultValues: {
       name: patient?.name || '',
-      age: patient?.age || 0,
+      age: patient?.age || ('' as any),
       phone: patient?.phone || '',
       imageFiles: undefined,
     },
@@ -66,7 +66,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         });
         setExistingImageUrls(patient.imageUrls || []);
     } else {
-        reset({ name: '', age: 0, phone: '', imageFiles: undefined });
+        reset({ name: '', age: '' as any, phone: '', imageFiles: undefined });
         setExistingImageUrls([]);
     }
     setSelectedFiles([]); // Clear selected files preview on patient change or new form
