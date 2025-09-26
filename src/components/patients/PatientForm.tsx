@@ -150,7 +150,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
 
         <div>
           <Label htmlFor="phone">رقم الهاتف</Label>
-          <Input id="phone" {...register("phone")} className="mt-1" dir="ltr" placeholder="0772150001" />
+          <Input id="phone" {...register("phone")} className="mt-1" dir="ltr" />
           {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
         </div>
 
