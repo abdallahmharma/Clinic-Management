@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "queen-d1593"
-  }
+    "default": "queen-d1593",
+    "y": "queen-d1593"
+  },
+  "targets": {},
+  "etags": {}
 }

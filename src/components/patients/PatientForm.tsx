@@ -12,7 +12,7 @@ import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/co
 import { useToast } from '@/hooks/use-toast';
 import type { Patient } from '@/lib/types';
 import { addPatient, updatePatient, uploadPatientImage } from '@/lib/api';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, X, CalendarPlus } from 'lucide-react';
 
 const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -34,13 +34,14 @@ type PatientFormData = z.infer<typeof patientSchema>;
 
 interface PatientFormProps {
   patient?: Patient | null;
-  onSuccess: (patient: Patient) => void;
+  onSuccess: (patient: Patient, openAppointmentForm?: boolean) => void;
   setOpen: (open: boolean) => void;
 }
 
 export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [submitAction, setSubmitAction] = React.useState<'save' | 'saveAndAddAppointment'>('save');
   const [existingImageUrls, setExistingImageUrls] = React.useState<string[]>(patient?.imageUrls || []);
   const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
 
@@ -62,14 +63,14 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
             name: patient.name,
             age: patient.age,
             phone: patient.phone,
-            imageFiles: undefined, // Clear file input on patient change
+            imageFiles: undefined,
         });
         setExistingImageUrls(patient.imageUrls || []);
     } else {
         reset({ name: '', age: '' as any, phone: '', imageFiles: undefined });
         setExistingImageUrls([]);
     }
-    setSelectedFiles([]); // Clear selected files preview on patient change or new form
+    setSelectedFiles([]);
   }, [patient, reset]);
 
 
@@ -98,7 +99,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         name: data.name,
         age: Number(data.age),
         phone: data.phone,
-        imageUrls: currentImageUrls.length > 0 ? currentImageUrls : null, // Send null if no images
+        imageUrls: currentImageUrls.length > 0 ? currentImageUrls : null,
       };
 
       let result: Patient;
@@ -111,8 +112,12 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         result = await addPatient(patientInputData as Omit<Patient, 'id' | 'createdAt'>);
         toast({ title: "نجاح", description: "تمت إضافة المريض بنجاح." });
       }
-      onSuccess(result);
-      setOpen(false);
+      
+      onSuccess(result, submitAction === 'saveAndAddAppointment');
+      
+      // We don't call setOpen(false) here if we're opening another dialog, 
+      // onSuccess callback in the parent will handle closing this one.
+      
     } catch (error: any) {
       console.error("Error submitting patient form:", error.message ? { message: error.message, details: error.details, code: error.code } : error);
       const errorMessage = error.message || "حدث خطأ أثناء حفظ بيانات المريض.";
@@ -195,15 +200,23 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
 
       </div>
 
-      <DialogFooter className="pt-4 border-t p-5">
+      <DialogFooter className="pt-4 border-t p-5 flex-col-reverse sm:flex-row sm:justify-end gap-2">
         <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>
           إلغاء
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
+        <Button type="submit" disabled={isSubmitting} onClick={() => setSubmitAction('save')}>
+          {isSubmitting && submitAction === 'save' ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
           {patient ? 'حفظ التعديلات' : 'إضافة مريض'}
         </Button>
+        {!patient && (
+             <Button type="submit" disabled={isSubmitting} onClick={() => setSubmitAction('saveAndAddAppointment')} variant="secondary">
+                {isSubmitting && submitAction === 'saveAndAddAppointment' ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="me-2 h-4 w-4" />}
+                 حفظ وإضافة موعد
+            </Button>
+        )}
       </DialogFooter>
     </form>
   );
 }
+
+    

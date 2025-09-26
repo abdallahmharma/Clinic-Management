@@ -63,9 +63,10 @@ interface AppointmentFormProps {
   patients: Patient[];
   onSuccess: (appointment: Appointment) => void;
   setOpen: (open: boolean) => void;
+  defaultPatientId?: string;
 }
 
-export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: AppointmentFormProps) {
+export function AppointmentForm({ appointment, patients, onSuccess, setOpen, defaultPatientId }: AppointmentFormProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
@@ -77,7 +78,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
   const { register, handleSubmit, control, setValue, watch, formState: { errors } } = useForm<AppointmentFormData>({
     resolver: zodResolver(appointmentSchema),
     defaultValues: {
-      patientId: appointment?.patientId || '',
+      patientId: appointment?.patientId || defaultPatientId || '',
       date: appointment ? parse(appointment.date, 'yyyy-MM-dd', new Date()) : new Date(),
       time: appointment?.time || '09:00',
       type: appointment?.type || '',
@@ -284,3 +285,5 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen }: A
     </form>
   );
 }
+
+    

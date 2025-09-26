@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2, X, Image as ImageIcon } from 'lucide-react'; // Added X and ImageIcon
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { PatientForm } from '@/components/patients/PatientForm';
-import type { Patient } from '@/lib/types';
-import { getPatients, deletePatient as apiDeletePatient } from '@/lib/api';
+import type { Appointment, Patient } from '@/lib/types';
+import { getPatients, deletePatient as apiDeletePatient, getAppointments, getPatients as getPatientsForAppointment } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -33,9 +33,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 import { PatientImageManagerDialog } from '@/components/patients/PatientImageManagerDialog'; // New import
+import { AppointmentForm } from '@/components/appointments/AppointmentForm';
 
 export default function PatientsPage() {
   const [patients, setPatients] = React.useState<Patient[]>([]);
+  const [appointments, setAppointments] = React.useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [editingPatient, setEditingPatient] = React.useState<Patient | null>(null);
@@ -47,22 +49,30 @@ export default function PatientsPage() {
   const [selectedPatientForImageManagement, setSelectedPatientForImageManagement] = React.useState<Patient | null>(null);
   const [isImageManagerOpen, setIsImageManagerOpen] = React.useState(false);
 
-  const fetchPatients = React.useCallback(async () => {
+  const [isAppointmentFormOpen, setIsAppointmentFormOpen] = React.useState(false);
+  const [appointmentDefaultPatient, setAppointmentDefaultPatient] = React.useState<Patient | null>(null);
+
+
+  const fetchPageData = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getPatients();
-      setPatients(data);
+      const [patientsData, appointmentsData] = await Promise.all([
+        getPatients(),
+        getAppointments(),
+      ]);
+      setPatients(patientsData);
+      setAppointments(appointmentsData);
     } catch (error) {
-      console.error("Fetch patients error:", error);
-      toast({ title: "خطأ", description: "فشل في تحميل قائمة المرضى.", variant: "destructive" });
+      console.error("Fetch page data error:", error);
+      toast({ title: "خطأ", description: "فشل في تحميل البيانات.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   }, [toast]);
 
   React.useEffect(() => {
-    fetchPatients();
-  }, [fetchPatients]);
+    fetchPageData();
+  }, [fetchPageData]);
 
   const handleAddPatient = () => {
     setEditingPatient(null);
@@ -94,7 +104,7 @@ export default function PatientsPage() {
     }
   };
 
-  const handleFormSuccess = (updatedPatient: Patient) => {
+  const handleFormSuccess = (updatedPatient: Patient, openAppointmentForm?: boolean) => {
     if (editingPatient) { 
       setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -106,11 +116,21 @@ export default function PatientsPage() {
     }
     setIsFormOpen(false);
     setEditingPatient(null);
+    
+    if (openAppointmentForm) {
+      setAppointmentDefaultPatient(updatedPatient);
+      setIsAppointmentFormOpen(true);
+    }
   };
   
   const handlePatientImagesUpdate = (updatedPatient: Patient) => {
     setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p));
-    // Optionally: setIsImageManagerOpen(false); // if you want to close dialog automatically
+  };
+  
+  const handleAppointmentFormSuccess = (updatedAppointment: Appointment) => {
+    setAppointments(prev => [updatedAppointment, ...prev].sort((a,b) => new Date(b.date + 'T' + b.time).getTime() - new Date(a.date + 'T' + a.time).getTime()));
+    setIsAppointmentFormOpen(false);
+    setAppointmentDefaultPatient(null);
   };
 
   const filteredPatients = patients.filter(patient =>
@@ -123,7 +143,7 @@ export default function PatientsPage() {
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-bold text-primary">عرض المرضى</h1>
         <div className="flex gap-2 w-full sm:w-auto">
-           <Button onClick={fetchPatients} variant="outline" disabled={isLoading} className="flex-shrink-0">
+           <Button onClick={fetchPageData} variant="outline" disabled={isLoading} className="flex-shrink-0">
             {isLoading ? <Loader2 className="ms-2 h-4 w-4 animate-spin" /> : <RefreshCw className="ms-2 h-4 w-4" />}
             تحديث
           </Button>
@@ -269,6 +289,20 @@ export default function PatientsPage() {
           )}
         </DialogContent>
       </Dialog>
+      
+       <Dialog open={isAppointmentFormOpen} onOpenChange={setIsAppointmentFormOpen}>
+        <DialogContent className="sm:max-w-[500px] p-0" dir="rtl">
+         {isAppointmentFormOpen && ( 
+            <AppointmentForm
+              patients={patients} 
+              onSuccess={handleAppointmentFormSuccess}
+              setOpen={setIsAppointmentFormOpen}
+              defaultPatientId={appointmentDefaultPatient?.id}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
 
       {selectedPatientForImageManagement && (
         <PatientImageManagerDialog
@@ -299,3 +333,5 @@ export default function PatientsPage() {
     </div>
   );
 }
+
+    
