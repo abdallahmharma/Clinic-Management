@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { Tajawal } from 'next/font/google'; // Using Tajawal for better Arabic support
 import './globals.css';
@@ -14,6 +15,9 @@ const tajawal = Tajawal({
 export const metadata: Metadata = {
   title: 'Clinic Management - إدارة العيادات',
   description: 'نظام إدارة المرضى والمواعيد للعيادات الطبية - Clinic Management System',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
