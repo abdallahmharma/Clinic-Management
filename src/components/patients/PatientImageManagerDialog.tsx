@@ -306,16 +306,14 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
         <Dialog open={isOpen} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-[800px] p-0" dir="rtl">
             <DialogHeader className="p-4 pb-1">
-  <DialogTitle className="text-xl font-bold text-primary mb-1">
-    إدارة صور المريض: <span className="text-primary/90">{patient.name}</span>
-  </DialogTitle>
-  <DialogDescription className="text-sm text-muted-foreground mt-0">
-    عرض، إضافة، أو حذف صور السجلات الطبية للمريض.
-  </DialogDescription>
-</DialogHeader>
+                <DialogTitle className="text-xl font-bold text-primary mb-1"> إدارة صور المريض: <span className="text-primary/90">{patient.name}</span>
+                </DialogTitle>
+                 <DialogDescription className="text-sm text-muted-foreground mt-0">  عرض، إضافة، أو حذف صور السجلات الطبية للمريض.
+                 </DialogDescription>
+                    </DialogHeader>
 
 
-            <div className="p-6 pt-0 space-y-6 max-h-[70vh] overflow-y-auto">
+            <div className="p-6 pt-0 space-y-2max-h-[70vh] overflow-y-auto">
               
               <ImageUploadArea 
                     fileInputRef={fileInputRef} 
@@ -326,8 +324,8 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
               <div className="space-y-3">
                 <Label className="text-lg font-semibold block border-b pb-2">الصور الحالية ({currentImageUrls.length})</Label>
                 {currentImageUrls.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        _                {currentImageUrls.map(url => {
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                    {currentImageUrls.map(url => {
                         const isImageDeleting = isDeleting[url];
                         return (
                             // Image Card Wrapper
@@ -374,7 +372,7 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                                                 <AlertTriangle className="h-6 w-6 me-2" /> تأكيد الحذف
                                             </AlertDialogTitle>
                                             <AlertDialogDescription>
-                                            هل انت متأكد من حذف الصورة.
+                                                هل انت متأكد من حذف الصورة.
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
@@ -393,7 +391,7 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                         );
                     })}
                   </div>
-              _   ) : (
+                ) : (
                   <div className="text-center py-6 bg-secondary/20 rounded-md">
                     <X className="mx-auto h-8 w-8 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground mt-2">لا توجد صور حالية. ابدأ الرفع الآن.</p>
@@ -402,8 +400,8 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
               </div>
             </div>
 
-            <DialogFooter className="p-6 pt-4 border-t">
-      _         <Button variant="outline" onClick={closeDialog} disabled={isUploading}>إغلاق</Button>
+            <DialogFooter className="p-6 pt-1 border-t">
+              <Button variant="outline" onClick={closeDialog} disabled={isUploading}>إغلاق</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
