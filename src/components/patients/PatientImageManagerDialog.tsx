@@ -390,9 +390,9 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                             </div>
                         );
                     })}
-                  </div>
+              	  </div>
                 ) : (
-                  <div className="text-center py-6 bg-secondary/20 rounded-md">
+          	        <div className="text-center py-6 bg-secondary/20 rounded-md">
                     <X className="mx-auto h-8 w-8 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground mt-2">لا توجد صور حالية. ابدأ الرفع الآن.</p>
                   </div>
@@ -402,9 +402,9 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
 
             <DialogFooter className="p-6 pt-1 border-t">
               <Button variant="outline" onClick={closeDialog} disabled={isUploading}>إغلاق</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      	      </DialogFooter>
+      	    </DialogContent>
+      	  </Dialog>
 
         {/* Image Preview Dialog */}
         <ImagePreviewDialog 
@@ -415,5 +415,3 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
     </>
   );
 }
-
-    
