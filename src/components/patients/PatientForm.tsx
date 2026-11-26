@@ -12,6 +12,8 @@ import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/co
 import { useToast } from '@/hooks/use-toast';
 import type { Patient } from '@/lib/types';
 import { addPatient, updatePatient, uploadPatientImage } from '@/lib/api';
+import { useSignedPatientImages } from '@/hooks/use-signed-patient-images';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, X, CalendarPlus } from 'lucide-react';
 
 const MAX_FILE_SIZE_MB = 5;
@@ -56,6 +58,7 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
   const [submitAction, setSubmitAction] = React.useState<'save' | 'saveAndAddAppointment'>('save');
   const [existingImageUrls, setExistingImageUrls] = React.useState<string[]>(patient?.imageUrls || []);
   const [selectedFiles, setSelectedFiles] = React.useState<File[]>([]);
+  const { signedUrlMap } = useSignedPatientImages(existingImageUrls);
 
   const { register, handleSubmit, formState: { errors }, watch, reset } = useForm<PatientFormData>({
     resolver: zodResolver(patientSchema),
@@ -143,9 +146,9 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
     }
   };
   
-  const handleRemoveExistingImage = (urlToRemove: string) => {
+  const handleRemoveExistingImage = React.useCallback((urlToRemove: string) => {
     setExistingImageUrls(prev => prev.filter(url => url !== urlToRemove));
-  };
+  }, []);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-1">
@@ -159,25 +162,25 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
       <div className="space-y-4 max-h-[70vh] overflow-y-auto p-5 pr-2">
         <div>
           <Label htmlFor="name">الاسم الكامل</Label>
-          <Input id="name" {...register("name")} className="mt-1"/>
+          <Input id="name" {...register("name")} className="mt-1" disabled={isSubmitting} />
           {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
         </div>
 
         <div>
           <Label htmlFor="age">العمر</Label>
-          <Input id="age" type="number" {...register("age")} className="mt-1"/>
+          <Input id="age" type="number" {...register("age")} className="mt-1" disabled={isSubmitting} />
           {errors.age && <p className="text-sm text-destructive mt-1">{errors.age.message}</p>}
         </div>
 
         <div>
           <Label htmlFor="phone">رقم الهاتف</Label>
-          <Input id="phone" {...register("phone")} className="mt-1" dir="ltr" />
+          <Input id="phone" {...register("phone")} className="mt-1" dir="ltr" disabled={isSubmitting} />
           {errors.phone && <p className="text-sm text-destructive mt-1">{errors.phone.message}</p>}
         </div>
 
         <div>
           <Label htmlFor="imageFiles">صور المريض (اختياري)</Label>
-          <Input id="imageFiles" type="file" multiple {...register("imageFiles")} className="mt-1" accept={ACCEPTED_IMAGE_TYPES.join(",")} />
+          <Input id="imageFiles" type="file" multiple {...register("imageFiles")} className="mt-1" accept={ACCEPTED_IMAGE_TYPES.join(",")} disabled={isSubmitting} />
           {errors.imageFiles && <p className="text-sm text-destructive mt-1">{errors.imageFiles.message as string}</p>}
         </div>
 
@@ -185,20 +188,29 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
           <div>
             <Label>الصور الحالية:</Label>
             <div className="mt-2 flex flex-wrap gap-2">
-              {existingImageUrls.map(url => (
-                <div key={url} className="relative group">
-                  <img src={url} alt="صورة مريض حالية" className="h-20 w-20 object-cover rounded-md border" />
-                  <Button 
-                    type="button" 
-                    variant="destructive" 
-                    size="icon" 
-                    className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
-                    onClick={() => handleRemoveExistingImage(url)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+              {existingImageUrls.map(url => {
+                const displayUrl =
+                  url.startsWith('data:') || url.startsWith('blob:') ? url : signedUrlMap[url];
+                return (
+                  <div key={url} className="relative group">
+                    {displayUrl ? (
+                      <img src={displayUrl} alt="صورة مريض حالية" className="h-20 w-20 object-cover rounded-md border" />
+                    ) : (
+                      <Skeleton className="h-20 w-20 rounded-md border" />
+                    )}
+                    <Button 
+                      type="button" 
+                      variant="destructive" 
+                      size="icon" 
+                      className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
+                      onClick={() => handleRemoveExistingImage(url)}
+                      disabled={isSubmitting}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -222,12 +234,14 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
         </Button>
         <Button type="submit" disabled={isSubmitting} onClick={() => setSubmitAction('save')}>
           {isSubmitting && submitAction === 'save' ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
-          {patient ? 'حفظ التعديلات' : 'إضافة مريض'}
+          {isSubmitting && submitAction === 'save'
+            ? (selectedFiles.length > 0 ? 'جاري رفع الصور والحفظ...' : 'جاري الحفظ...')
+            : (patient ? 'حفظ التعديلات' : 'إضافة مريض')}
         </Button>
         {!patient && (
              <Button type="submit" disabled={isSubmitting} onClick={() => setSubmitAction('saveAndAddAppointment')} variant="secondary">
                 {isSubmitting && submitAction === 'saveAndAddAppointment' ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <CalendarPlus className="me-2 h-4 w-4" />}
-                 حفظ وإضافة موعد
+                 {isSubmitting && submitAction === 'saveAndAddAppointment' ? 'جاري الحفظ...' : 'حفظ وإضافة موعد'}
             </Button>
         )}
       </DialogFooter>

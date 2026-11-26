@@ -1,8 +1,7 @@
-
 "use client";
 
 import * as React from 'react';
-import { format } from 'date-fns'; // Removed parseISO as it's not used
+import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 import { Calendar as CalendarIcon, Users, CalendarPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,15 +10,15 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DailyAppointments } from '@/components/dashboard/DailyAppointments';
 import { DashboardStats } from '@/components/dashboard/DashboardStats';
 import type { Appointment } from '@/lib/types';
-import { getAppointments, getAppointmentsByDate, getPatients } from '@/lib/api'; // Using new API
+import { getAppointmentsByDate, getDashboardStats } from '@/lib/api';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function DashboardPage() {
-  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(new Date());
+  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(() => new Date());
   const [appointments, setAppointments] = React.useState<Appointment[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
   const [statsLoading, setStatsLoading] = React.useState(true);
   const [stats, setStats] = React.useState({
@@ -29,42 +28,38 @@ export default function DashboardPage() {
     totalTodayCount: 0,
   });
 
+  const dateAppointmentsCacheRef = React.useRef<Map<string, Appointment[]>>(new Map());
+  const initialTodayStringRef = React.useRef<string>(format(new Date(), 'yyyy-MM-dd'));
+
   React.useEffect(() => {
     let isMounted = true;
+    const now = new Date();
+    const todayString = format(now, 'yyyy-MM-dd');
+    initialTodayStringRef.current = todayString;
+
     setStatsLoading(true);
+    setIsLoading(true);
 
-    Promise.all([getPatients(), getAppointments()])
-      .then(([patientsData, allAppointments]) => {
+    getDashboardStats(now)
+      .then((result) => {
         if (!isMounted) return;
-        const now = new Date();
-        const currentMonthPrefix = format(now, 'yyyy-MM');
-        const todayString = format(now, 'yyyy-MM-dd');
-        const currentTimeString = format(now, 'HH:mm');
-
-        const monthlyAppointmentsCount = allAppointments.filter((appt) =>
-          appt.date.startsWith(currentMonthPrefix)
-        ).length;
-
-        const todayAppointments = allAppointments.filter(
-          (appt) => appt.date === todayString
-        );
-
-        const upcomingTodayCount = todayAppointments.filter(
-          (appt) => appt.time.slice(0, 5) >= currentTimeString
-        ).length;
-
         setStats({
-          totalPatients: patientsData.length,
-          monthlyAppointmentsCount,
-          upcomingTodayCount,
-          totalTodayCount: todayAppointments.length,
+          totalPatients: result.totalPatients,
+          monthlyAppointmentsCount: result.monthlyAppointmentsCount,
+          upcomingTodayCount: result.upcomingTodayCount,
+          totalTodayCount: result.totalTodayCount,
         });
+        dateAppointmentsCacheRef.current.set(todayString, result.todayAppointments);
+        setAppointments(result.todayAppointments);
       })
       .catch((error) => {
         console.error("Failed to fetch dashboard stats:", error);
       })
       .finally(() => {
-        if (isMounted) setStatsLoading(false);
+        if (isMounted) {
+          setStatsLoading(false);
+          setIsLoading(false);
+        }
       });
 
     return () => {
@@ -73,26 +68,51 @@ export default function DashboardPage() {
   }, []);
 
   React.useEffect(() => {
-    if (selectedDate) {
-      setIsLoading(true);
-      const dateString = format(selectedDate, 'yyyy-MM-dd');
-      getAppointmentsByDate(dateString)
-        .then(data => {
-          setAppointments(data);
-          setIsLoading(false);
-        })
-        .catch(error => {
-          console.error("Failed to fetch appointments for dashboard:", error);
-          // Optionally, show a toast to the user
-          setIsLoading(false);
-        });
-    }
-  }, [selectedDate]);
+    if (!selectedDate) return;
+    const dateString = format(selectedDate, 'yyyy-MM-dd');
 
-  const handleDateSelect = (date: Date | undefined) => {
+    const cached = dateAppointmentsCacheRef.current.get(dateString);
+    if (cached) {
+      setAppointments(cached);
+      setIsLoading(false);
+      return;
+    }
+
+    // Initial today fetch is already handled by getDashboardStats
+    if (dateString === initialTodayStringRef.current && statsLoading) {
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoading(true);
+
+    getAppointmentsByDate(dateString)
+      .then((data) => {
+        if (!isMounted) return;
+        dateAppointmentsCacheRef.current.set(dateString, data);
+        setAppointments(data);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch appointments for dashboard:", error);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDate, statsLoading]);
+
+  const handleDateSelect = React.useCallback((date: Date | undefined) => {
     setSelectedDate(date);
-    setCalendarOpen(false); // Close popover on date select
-  }
+    setCalendarOpen(false);
+  }, []);
+
+  const selectedDateLabel = React.useMemo(
+    () => (selectedDate ? format(selectedDate, "PPP", { locale: arSA }) : null),
+    [selectedDate]
+  );
 
   return (
     <div className="space-y-8">
@@ -135,7 +155,7 @@ export default function DashboardPage() {
                   className="w-full justify-start text-left font-normal text-lg py-3 h-auto mb-4"
                 >
                   <CalendarIcon className="ms-2 h-5 w-5" />
-                  {selectedDate ? format(selectedDate, "PPP", { locale: arSA }) : <span>اختر تاريخاً</span>}
+                  {selectedDateLabel ? selectedDateLabel : <span>اختر تاريخاً</span>}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -150,17 +170,14 @@ export default function DashboardPage() {
                 />
               </PopoverContent>
             </Popover>
-             <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => { // Ensure calendarOpen closes if it was used
-                    setSelectedDate(date);
-                    if(calendarOpen) setCalendarOpen(false);
-                }}
-                className="rounded-md border p-0 hidden lg:block" 
-                locale={arSA}
-                dir="rtl"
-              />
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={handleDateSelect}
+              className="rounded-md border p-0 hidden lg:block"
+              locale={arSA}
+              dir="rtl"
+            />
           </CardContent>
         </Card>
 

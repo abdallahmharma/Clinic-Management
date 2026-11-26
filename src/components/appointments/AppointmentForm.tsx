@@ -64,14 +64,17 @@ interface AppointmentFormProps {
   onSuccess: (appointment: Appointment) => void;
   setOpen: (open: boolean) => void;
   defaultPatientId?: string;
+  defaultDate?: Date;
 }
 
-export function AppointmentForm({ appointment, patients, onSuccess, setOpen, defaultPatientId }: AppointmentFormProps) {
+export function AppointmentForm({ appointment, patients, onSuccess, setOpen, defaultPatientId, defaultDate }: AppointmentFormProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
-    appointment ? parse(appointment.date, 'yyyy-MM-dd', new Date()) : new Date()
+  const initialDate = React.useMemo(
+    () => (appointment ? parse(appointment.date, 'yyyy-MM-dd', new Date()) : defaultDate || new Date()),
+    [appointment, defaultDate]
   );
+  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(initialDate);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
   const [patientComboboxOpen, setPatientComboboxOpen] = React.useState(false);
 
@@ -79,7 +82,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
     resolver: zodResolver(appointmentSchema),
     defaultValues: {
       patientId: appointment?.patientId || defaultPatientId || '',
-      date: appointment ? parse(appointment.date, 'yyyy-MM-dd', new Date()) : new Date(),
+      date: initialDate,
       time: appointment?.time || '09:00',
       type: appointment?.type || '',
       notes: appointment?.notes || '',
@@ -92,11 +95,11 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
     }
   }, [selectedDate, setValue]);
   
-  const handleDateSelect = (date: Date | undefined) => {
+  const handleDateSelect = React.useCallback((date: Date | undefined) => {
     setSelectedDate(date);
     if (date) setValue("date", date, { shouldValidate: true });
     setCalendarOpen(false);
-  }
+  }, [setValue]);
 
   const onSubmit = async (data: AppointmentFormData) => {
     setIsSubmitting(true);
@@ -129,11 +132,23 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
     }
   };
   
-  const patientSelectItems = patients.map(p => ({
-    value: p.id,
-    label: p.name,
-    phone: p.phone
-  }));
+  const patientSelectItems = React.useMemo(
+    () =>
+      patients.map(p => ({
+        value: p.id,
+        label: p.name,
+        phone: p.phone,
+      })),
+    [patients]
+  );
+
+  const patientMap = React.useMemo(() => {
+    const map = new Map<string, { value: string; label: string; phone: string }>();
+    for (const item of patientSelectItems) {
+      map.set(item.value.toLowerCase(), item);
+    }
+    return map;
+  }, [patientSelectItems]);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-1">
@@ -158,10 +173,10 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
                     role="combobox"
                     aria-expanded={patientComboboxOpen}
                     className="w-full justify-between mt-1"
-                    disabled={patients.length === 0}
+                    disabled={patients.length === 0 || isSubmitting}
                   >
                     {field.value
-                      ? patientSelectItems.find((p) => p.value === field.value)?.label
+                      ? patientMap.get(field.value.toLowerCase())?.label
                       : "اختر مريضًا..."}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
@@ -169,12 +184,16 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
                 <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                   <Command
                     filter={(value, search) => {
-                      const patient = patientSelectItems.find(p => p.value.toLowerCase() === value.toLowerCase());
+                      const normalizedSearch = search.toLowerCase();
+                      const patient = patientMap.get(value.toLowerCase());
                       if (patient) {
-                        const nameMatch = patient.label.toLowerCase().includes(search.toLowerCase());
-                        const phoneMatch = patient.phone.includes(search);
-                        if (nameMatch || phoneMatch) return 1;
-                      } else if (value.toLowerCase().includes(search.toLowerCase())) { 
+                        if (
+                          patient.label.toLowerCase().includes(normalizedSearch) ||
+                          patient.phone.includes(search)
+                        ) {
+                          return 1;
+                        }
+                      } else if (value.toLowerCase().includes(normalizedSearch)) {
                         return 1;
                       }
                       return 0;
@@ -218,7 +237,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
             name="type"
             control={control}
             render={({ field }) => (
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
                 <SelectTrigger className="w-full mt-1">
                   <SelectValue placeholder="اختر نوع الموعد..." />
                 </SelectTrigger>
@@ -238,7 +257,9 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
             <PopoverTrigger asChild>
               <Button
+                type="button"
                 variant={"outline"}
+                disabled={isSubmitting}
                 className={cn("w-full justify-start text-left font-normal mt-1", !selectedDate && "text-muted-foreground")}
               >
                 <CalendarIcon className="ms-2 h-4 w-4" />
@@ -261,13 +282,13 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
         
         <div>
           <Label htmlFor="time">الوقت</Label>
-          <Input id="time" type="time" {...register("time")} className="mt-1" dir="ltr"/>
+          <Input id="time" type="time" {...register("time")} className="mt-1" dir="ltr" disabled={isSubmitting}/>
           {errors.time && <p className="text-sm text-destructive mt-1">{errors.time.message}</p>}
         </div>
 
         <div>
           <Label htmlFor="notes">ملاحظات (اختياري)</Label>
-          <Textarea id="notes" {...register("notes")} className="mt-1"/>
+          <Textarea id="notes" {...register("notes")} className="mt-1" disabled={isSubmitting}/>
           {errors.notes && <p className="text-sm text-destructive mt-1">{errors.notes.message}</p>}
         </div>
       </div>
@@ -278,7 +299,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
         </Button>
         <Button type="submit" disabled={isSubmitting || patients.length === 0}>
           {isSubmitting ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
-          {appointment ? 'حفظ التعديلات' : 'إضافة موعد'}
+          {isSubmitting ? 'جاري الحفظ...' : (appointment ? 'حفظ التعديلات' : 'إضافة موعد')}
         </Button>
       </DialogFooter>
       {patients.length === 0 && !isSubmitting && <p className="text-sm text-destructive text-center pt-2 px-6">يجب إضافة مرضى أولاً لتتمكن من إضافة موعد.</p>}

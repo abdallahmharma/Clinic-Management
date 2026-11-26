@@ -1,6 +1,6 @@
 
 import { supabase, isSupabaseConfigured } from './supabaseClient';
-import { compressImageToWebP } from './utils';
+import { compressImageToWebP, getStoragePathFromUrl, isDisplayableImageSrc } from './utils';
 import type { Database } from './database.types';
 import type { Patient, Appointment } from './types';
 
@@ -54,6 +54,7 @@ function getInitialMockAppointments(): Appointment[] {
       id: 'mock-appt-1',
       patientId: 'mock-patient-1',
       patientName: 'سارة أحمد محمد',
+      patientPhone: '0771234567',
       date: today,
       time: '10:00',
       type: 'بشرة',
@@ -64,6 +65,7 @@ function getInitialMockAppointments(): Appointment[] {
       id: 'mock-appt-2',
       patientId: 'mock-patient-2',
       patientName: 'علي حسن كريم',
+      patientPhone: '0789876543',
       date: today,
       time: '12:30',
       type: 'استشارة',
@@ -153,7 +155,8 @@ function mapAppointmentRowToAppointment(row: any): Appointment {
   return {
     id: row.id,
     patientId: row.patient_id,
-    patientName: row.patients?.name || 'اسم غير معروف', // Assuming 'patients' is the related table
+    patientName: row.patients?.name || 'اسم غير معروف',
+    patientPhone: row.patients?.phone || undefined,
     date: row.date,
     time: row.time,
     type: row.type || 'غير محدد',
@@ -250,10 +253,18 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
     nextPatients[idx] = updated;
     saveMockPatients(nextPatients);
 
-    if (patientData.name !== undefined) {
+    if (patientData.name !== undefined || patientData.phone !== undefined) {
       const appointments = loadMockAppointments();
       saveMockAppointments(
-        appointments.map(a => (a.patientId === id ? { ...a, patientName: patientData.name! } : a))
+        appointments.map(a =>
+          a.patientId === id
+            ? {
+                ...a,
+                patientName: patientData.name ?? a.patientName,
+                patientPhone: patientData.phone ?? a.patientPhone,
+              }
+            : a
+        )
       );
     }
     return updated;
@@ -279,14 +290,65 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
   return data ? mapPatientRowToPatient(data) : null;
 }
 
-export async function deletePatient(id: string): Promise<void> {
+export interface DeletePatientResult {
+  storageDeletedAll: boolean;
+  failedStorageCount: number;
+}
+
+export async function deletePatient(id: string, imageUrls?: string[]): Promise<DeletePatientResult> {
   if (!isSupabaseConfigured || !supabase) {
     saveMockAppointments(loadMockAppointments().filter(a => a.patientId !== id));
     saveMockPatients(loadMockPatients().filter(p => p.id !== id));
-    return;
+    return { storageDeletedAll: true, failedStorageCount: 0 };
   }
 
-  // First, delete related appointments
+  // 1. Collect image paths/URLs (from argument or DB) and delete them from Storage first
+  let targetImageUrls = imageUrls;
+  if (targetImageUrls === undefined) {
+    try {
+      const { data: patientRow, error: fetchImagesError } = await supabase
+        .from('patients')
+        .select('image_urls')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (fetchImagesError) {
+        console.warn(`Warning fetching image_urls before deleting patient (${id}):`, fetchImagesError);
+      } else if (patientRow?.image_urls) {
+        targetImageUrls = patientRow.image_urls;
+      }
+    } catch (fetchErr) {
+      console.warn(`Unexpected error fetching image_urls for patient (${id}):`, fetchErr);
+    }
+  }
+
+  const uniqueImageUrls = Array.from(new Set((targetImageUrls || []).filter(Boolean)));
+  let failedStorageCount = 0;
+
+  if (uniqueImageUrls.length > 0) {
+    try {
+      const storageResults = await Promise.allSettled(
+        uniqueImageUrls.map((urlOrPath) => deletePatientImageFromStorage(urlOrPath))
+      );
+
+      for (const result of storageResults) {
+        if (result.status === 'rejected' || result.value === false) {
+          failedStorageCount += 1;
+        }
+      }
+
+      if (failedStorageCount > 0) {
+        console.warn(
+          `Partial storage cleanup warning for patient (${id}): ${failedStorageCount}/${uniqueImageUrls.length} file(s) failed to delete.`
+        );
+      }
+    } catch (storageCleanupErr) {
+      failedStorageCount = uniqueImageUrls.length;
+      console.warn(`Unexpected storage cleanup error for patient (${id}):`, storageCleanupErr);
+    }
+  }
+
+  // 2. Delete related appointments
   const { error: appointmentError } = await supabase
     .from('appointments')
     .delete()
@@ -296,8 +358,8 @@ export async function deletePatient(id: string): Promise<void> {
     console.error(`Error deleting related appointments for patient ID ${id}:`, { message: appointmentError.message, details: appointmentError.details, hint: appointmentError.hint, code: appointmentError.code });
     throw appointmentError;
   }
-  
-  // Then, delete the patient
+
+  // 3. Delete the patient record
   const { error: patientError } = await supabase
     .from('patients')
     .delete()
@@ -305,8 +367,90 @@ export async function deletePatient(id: string): Promise<void> {
 
   if (patientError) {
     console.error(`Error deleting patient (${id}):`, { message: patientError.message, details: patientError.details, hint: patientError.hint, code: patientError.code });
-    throw patientError; // Throw error to indicate failure
+    throw patientError;
   }
+
+  return {
+    storageDeletedAll: failedStorageCount === 0,
+    failedStorageCount,
+  };
+}
+
+export interface DashboardStatsResult {
+  totalPatients: number;
+  monthlyAppointmentsCount: number;
+  upcomingTodayCount: number;
+  totalTodayCount: number;
+  todayAppointments: Appointment[];
+}
+
+export async function getDashboardStats(referenceDate = new Date()): Promise<DashboardStatsResult> {
+  const year = referenceDate.getFullYear();
+  const monthIndex = referenceDate.getMonth();
+  const month = String(monthIndex + 1).padStart(2, '0');
+  const day = String(referenceDate.getDate()).padStart(2, '0');
+  const todayString = `${year}-${month}-${day}`;
+  const currentTimeString = `${String(referenceDate.getHours()).padStart(2, '0')}:${String(referenceDate.getMinutes()).padStart(2, '0')}`;
+
+  const monthStart = `${year}-${month}-01`;
+  const nextMonthDate = new Date(year, monthIndex + 1, 1);
+  const nextMonthStart = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
+  const currentMonthPrefix = `${year}-${month}`;
+
+  if (!isSupabaseConfigured || !supabase) {
+    const patients = loadMockPatients();
+    const allAppointments = loadMockAppointments();
+    const monthlyAppointments = allAppointments.filter((appt) =>
+      appt.date.startsWith(currentMonthPrefix)
+    );
+    const todayAppointments = monthlyAppointments
+      .filter((appt) => appt.date === todayString)
+      .sort((a, b) => a.time.localeCompare(b.time));
+    const upcomingTodayCount = todayAppointments.filter(
+      (appt) => appt.time.slice(0, 5) >= currentTimeString
+    ).length;
+
+    return {
+      totalPatients: patients.length,
+      monthlyAppointmentsCount: monthlyAppointments.length,
+      upcomingTodayCount,
+      totalTodayCount: todayAppointments.length,
+      todayAppointments,
+    };
+  }
+
+  const [patientsCountRes, monthlyAppointmentsRes] = await Promise.all([
+    supabase.from('patients').select('*', { count: 'exact', head: true }),
+    supabase
+      .from('appointments')
+      .select('*, patients(name, phone)')
+      .gte('date', monthStart)
+      .lt('date', nextMonthStart)
+      .order('time', { ascending: true }),
+  ]);
+
+  if (patientsCountRes.error) {
+    console.error('Error counting patients:', patientsCountRes.error);
+    throw patientsCountRes.error;
+  }
+  if (monthlyAppointmentsRes.error) {
+    console.error('Error fetching monthly appointments:', monthlyAppointmentsRes.error);
+    throw monthlyAppointmentsRes.error;
+  }
+
+  const monthlyAppointments = (monthlyAppointmentsRes.data || []).map(mapAppointmentRowToAppointment);
+  const todayAppointments = monthlyAppointments.filter((appt) => appt.date === todayString);
+  const upcomingTodayCount = todayAppointments.filter(
+    (appt) => appt.time.slice(0, 5) >= currentTimeString
+  ).length;
+
+  return {
+    totalPatients: patientsCountRes.count ?? 0,
+    monthlyAppointmentsCount: monthlyAppointments.length,
+    upcomingTodayCount,
+    totalTodayCount: todayAppointments.length,
+    todayAppointments,
+  };
 }
 
 // Appointment Functions
@@ -319,7 +463,7 @@ export async function getAppointments(): Promise<Appointment[]> {
 
   const { data, error } = await supabase
     .from('appointments')
-    .select('*, patients(name)') 
+    .select('*, patients(name, phone)') 
     .order('date', { ascending: false })
     .order('time', { ascending: false });
 
@@ -340,7 +484,7 @@ export async function getAppointmentsByDate(date: string): Promise<Appointment[]
 
   const { data, error } = await supabase
     .from('appointments')
-    .select('*, patients(name)')
+    .select('*, patients(name, phone)')
     .eq('date', date)
     .order('time', { ascending: true });
 
@@ -351,7 +495,28 @@ export async function getAppointmentsByDate(date: string): Promise<Appointment[]
   return data ? data.map(mapAppointmentRowToAppointment) : [];
 }
 
-export async function addAppointment(appointmentData: Omit<Appointment, 'id' | 'createdAt' | 'patientName'>): Promise<Appointment> {
+export async function getAppointmentsByPatientId(patientId: string): Promise<Appointment[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return loadMockAppointments()
+      .filter(a => a.patientId === patientId)
+      .sort((a, b) => new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime());
+  }
+
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('*, patients(name, phone)')
+    .eq('patient_id', patientId)
+    .order('date', { ascending: false })
+    .order('time', { ascending: false });
+
+  if (error) {
+    console.error(`Error fetching appointments for patient (${patientId}):`, { message: error.message, details: error.details, hint: error.hint, code: error.code });
+    throw error;
+  }
+  return data ? data.map(mapAppointmentRowToAppointment) : [];
+}
+
+export async function addAppointment(appointmentData: Omit<Appointment, 'id' | 'createdAt' | 'patientName' | 'patientPhone'>): Promise<Appointment> {
   if (!isSupabaseConfigured || !supabase) {
     const patients = loadMockPatients();
     const patient = patients.find(p => p.id === appointmentData.patientId);
@@ -359,6 +524,7 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `appt-${Date.now()}`,
       patientId: appointmentData.patientId,
       patientName: patient?.name || 'اسم غير معروف',
+      patientPhone: patient?.phone || undefined,
       date: appointmentData.date,
       time: appointmentData.time,
       type: appointmentData.type || 'غير محدد',
@@ -379,7 +545,7 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
   const { data, error } = await supabase
     .from('appointments')
     .insert(appointmentToInsert)
-    .select('*, patients(name)') 
+    .select('*, patients(name, phone)') 
     .single();
 
   if (error) {
@@ -389,7 +555,7 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
   return mapAppointmentRowToAppointment(data);
 }
 
-export async function updateAppointment(id: string, appointmentData: Partial<Omit<Appointment, 'id' | 'createdAt' | 'patientName'>>): Promise<Appointment | null> {
+export async function updateAppointment(id: string, appointmentData: Partial<Omit<Appointment, 'id' | 'createdAt' | 'patientName' | 'patientPhone'>>): Promise<Appointment | null> {
   if (!isSupabaseConfigured || !supabase) {
     const appointments = loadMockAppointments();
     const idx = appointments.findIndex(a => a.id === id);
@@ -401,6 +567,7 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
       ...appointments[idx],
       ...appointmentData,
       patientName: patient?.name || appointments[idx].patientName,
+      patientPhone: patient?.phone || appointments[idx].patientPhone,
     };
     const next = [...appointments];
     next[idx] = updated;
@@ -419,7 +586,7 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
     .from('appointments')
     .update(appointmentToUpdate)
     .eq('id', id)
-    .select('*, patients(name)') 
+    .select('*, patients(name, phone)') 
     .single();
 
   if (error) {
@@ -446,7 +613,9 @@ export async function deleteAppointment(id: string): Promise<void> {
   }
 }
 
-// Supabase storage for image upload
+const PATIENT_IMAGES_BUCKET = 'patient-images';
+
+// Supabase storage for image upload (Private Bucket — stores stable relative path like "public/...")
 export async function uploadPatientImage(file: File, identifier?: string): Promise<string> {
   const processedFile = await compressImageToWebP(file, 1200, 0.8);
 
@@ -462,37 +631,192 @@ export async function uploadPatientImage(file: File, identifier?: string): Promi
     return `https://placehold.co/400x400?text=${encodeURIComponent(processedFile.name)}`;
   }
 
-    const fileExt =
-      processedFile.type === 'image/webp'
-        ? 'webp'
-        : processedFile.name.split('.').pop() || 'webp';
-    const uniqueFilePrefix = identifier || crypto.randomUUID();
-    const uniqueSuffix = Math.random().toString(36).slice(2, 7);
-    const fileName = `${uniqueFilePrefix}-${Date.now()}-${uniqueSuffix}.${fileExt}`;
-    const filePath = `public/${fileName}`;
+  const fileExt =
+    processedFile.type === 'image/webp'
+      ? 'webp'
+      : processedFile.name.split('.').pop() || 'webp';
+  const uniqueFilePrefix = identifier || crypto.randomUUID();
+  const uniqueSuffix = Math.random().toString(36).slice(2, 7);
+  const fileName = `${uniqueFilePrefix}-${Date.now()}-${uniqueSuffix}.${fileExt}`;
+  const filePath = `public/${fileName}`;
 
-    const { data, error: uploadError } = await supabase.storage
-      .from('patient-images')
-      .upload(filePath, processedFile, {
-        contentType: processedFile.type || 'image/webp',
-      });
+  const { data, error: uploadError } = await supabase.storage
+    .from(PATIENT_IMAGES_BUCKET)
+    .upload(filePath, processedFile, {
+      contentType: processedFile.type || 'image/webp',
+    });
 
-    if (uploadError) {
-      console.error('Error uploading image to Supabase Storage:', { message: uploadError.message, name: (uploadError as any).name, status: (uploadError as any).status }, 'File path:', filePath);
-      throw uploadError;
+  if (uploadError) {
+    console.error(
+      'Error uploading image to Supabase Storage:',
+      { message: uploadError.message, name: (uploadError as any).name, status: (uploadError as any).status },
+      'File path:',
+      filePath
+    );
+    throw uploadError;
+  }
+
+  // Store the canonical storage path (e.g. "public/...") in DB instead of a public or expiring URL
+  return data.path || filePath;
+}
+
+interface CachedSignedUrl {
+  signedUrl: string;
+  expiresAt: number;
+}
+
+const SIGNED_URL_EXPIRY_BUFFER_MS = 60_000;
+const signedUrlCache = new Map<string, CachedSignedUrl>();
+
+function getValidCachedSignedUrl(storagePath: string): string | null {
+  const cached = signedUrlCache.get(storagePath);
+  if (!cached) return null;
+  if (Date.now() >= cached.expiresAt - SIGNED_URL_EXPIRY_BUFFER_MS) {
+    signedUrlCache.delete(storagePath);
+    return null;
+  }
+  return cached.signedUrl;
+}
+
+export function getCachedPatientImageUrls(
+  urlsOrPaths: string[] | null | undefined
+): { cachedMap: Record<string, string>; hasMissing: boolean } {
+  const cachedMap: Record<string, string> = {};
+  if (!urlsOrPaths || urlsOrPaths.length === 0) {
+    return { cachedMap, hasMissing: false };
+  }
+
+  let hasMissing = false;
+  const uniqueItems = Array.from(new Set(urlsOrPaths.filter(Boolean)));
+
+  for (const item of uniqueItems) {
+    if (item.startsWith('data:') || item.startsWith('blob:')) {
+      cachedMap[item] = item;
+      continue;
     }
 
-    const { data: urlData } = supabase.storage
-      .from('patient-images')
-      .getPublicUrl(data.path);
-      
-    if (!urlData || !urlData.publicUrl) {
-        console.warn("Uploaded image but could not get public URL. Attempting to remove orphaned file:", filePath);
-        await supabase.storage.from('patient-images').remove([filePath]).catch(removeError => {
-            console.error("Failed to remove orphaned file after public URL failure:", removeError, filePath);
+    const storagePath = getStoragePathFromUrl(item, PATIENT_IMAGES_BUCKET);
+    if (!storagePath || !isSupabaseConfigured || !supabase) {
+      if (isDisplayableImageSrc(item)) {
+        cachedMap[item] = item;
+      }
+      continue;
+    }
+
+    const cachedSignedUrl = getValidCachedSignedUrl(storagePath);
+    if (cachedSignedUrl) {
+      cachedMap[item] = cachedSignedUrl;
+    } else {
+      hasMissing = true;
+    }
+  }
+
+  return { cachedMap, hasMissing };
+}
+
+/**
+ * Resolves an array of stored patient image references (either "public/..." paths
+ * or legacy full Supabase URLs) into temporary Signed URLs for display/preview,
+ * reusing cached Signed URLs until close to expiration.
+ * Never mutates the underlying database values.
+ */
+export async function resolvePatientImageUrls(
+  urlsOrPaths: string[] | null | undefined,
+  expiresInSeconds = 3600
+): Promise<Record<string, string>> {
+  const resolved: Record<string, string> = {};
+  if (!urlsOrPaths || urlsOrPaths.length === 0) return resolved;
+
+  const uniqueItems = Array.from(new Set(urlsOrPaths.filter(Boolean)));
+  const pathToOriginalItems = new Map<string, string[]>();
+
+  for (const item of uniqueItems) {
+    if (item.startsWith('data:') || item.startsWith('blob:')) {
+      resolved[item] = item;
+      continue;
+    }
+
+    const storagePath = getStoragePathFromUrl(item, PATIENT_IMAGES_BUCKET);
+    if (!storagePath) {
+      if (isDisplayableImageSrc(item)) {
+        resolved[item] = item;
+      }
+      continue;
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      if (isDisplayableImageSrc(item)) {
+        resolved[item] = item;
+      }
+      continue;
+    }
+
+    const cachedSignedUrl = getValidCachedSignedUrl(storagePath);
+    if (cachedSignedUrl) {
+      resolved[item] = cachedSignedUrl;
+      continue;
+    }
+
+    const existing = pathToOriginalItems.get(storagePath) || [];
+    existing.push(item);
+    pathToOriginalItems.set(storagePath, existing);
+  }
+
+  const pathsToSign = Array.from(pathToOriginalItems.keys());
+  if (pathsToSign.length === 0 || !supabase) {
+    return resolved;
+  }
+
+  const { data, error } = await supabase.storage
+    .from(PATIENT_IMAGES_BUCKET)
+    .createSignedUrls(pathsToSign, expiresInSeconds);
+
+  if (error) {
+    console.error('Error creating signed URLs for patient images:', error);
+    return resolved;
+  }
+
+  const expiresAt = Date.now() + expiresInSeconds * 1000;
+  if (data) {
+    for (const entry of data) {
+      if (entry.path && entry.signedUrl && !entry.error) {
+        signedUrlCache.set(entry.path, {
+          signedUrl: entry.signedUrl,
+          expiresAt,
         });
-        throw new Error("Could not get public URL for uploaded image. The file was removed to prevent orphaned storage.");
+        const originals = pathToOriginalItems.get(entry.path) || [];
+        for (const orig of originals) {
+          resolved[orig] = entry.signedUrl;
+        }
+      } else if (entry.error) {
+        console.warn('Failed to sign patient image path:', entry.path, entry.error);
+      }
     }
+  }
 
-    return urlData.publicUrl;
+  return resolved;
+}
+
+/**
+ * Deletes an image object from the private Supabase Storage bucket using either
+ * its stored relative path ("public/...") or a legacy full URL.
+ */
+export async function deletePatientImageFromStorage(urlOrPath: string): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return true;
+
+  const storagePath = getStoragePathFromUrl(urlOrPath, PATIENT_IMAGES_BUCKET);
+  if (!storagePath) return true;
+
+  signedUrlCache.delete(storagePath);
+
+  const { error } = await supabase.storage
+    .from(PATIENT_IMAGES_BUCKET)
+    .remove([storagePath]);
+
+  if (error) {
+    console.error('Error deleting image from Supabase Storage:', error, storagePath);
+    return false;
+  }
+
+  return true;
 }

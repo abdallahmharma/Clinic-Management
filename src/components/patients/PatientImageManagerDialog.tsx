@@ -9,10 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import type { Patient } from '@/lib/types';
-import { updatePatient, uploadPatientImage } from '@/lib/api';
+import { deletePatientImageFromStorage, updatePatient, uploadPatientImage } from '@/lib/api';
 import { Loader2, Trash2, UploadCloud, X, AlertTriangle, Maximize } from 'lucide-react'; 
-import { getStoragePathFromUrl } from '@/lib/utils';
-import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
+import { useSignedPatientImages } from '@/hooks/use-signed-patient-images';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,16 +101,10 @@ const useImageManagement = (patient: Patient, onImagesUpdate: (updatedPatient: P
     const handleDeleteImage = React.useCallback(async (imageUrlToDelete: string) => {
         setIsDeleting(prev => ({ ...prev, [imageUrlToDelete]: true }));
         try {
-            // 1. Delete from Storage (Supabase)
-            if (isSupabaseConfigured && supabase) {
-                const storagePath = getStoragePathFromUrl(imageUrlToDelete, 'patient-images');
-                if (storagePath) {
-                    const { error: storageError } = await supabase.storage.from('patient-images').remove([storagePath]);
-                    if (storageError) {
-                        console.error("Error deleting image from storage:", storageError);
-                        toast({ title: "تحذير", description: "فشل حذف الصورة من التخزين السحابي. سيتم حذف الرابط من قاعدة البيانات.", variant: "default", duration: 7000 });
-                    }
-                }
+            // 1. Delete from Storage (Supabase private bucket)
+            const deletedFromStorage = await deletePatientImageFromStorage(imageUrlToDelete);
+            if (!deletedFromStorage) {
+                toast({ title: "تحذير", description: "فشل حذف الصورة من التخزين السحابي. سيتم حذف الرابط من قاعدة البيانات.", variant: "default", duration: 7000 });
             }
             
             // 2. Delete from Database (Patient record)
@@ -157,38 +151,40 @@ interface ImageUploadAreaProps {
 const ImageUploadArea: React.FC<ImageUploadAreaProps> = ({ fileInputRef, isUploading, handleFileChange }) => {
     const [isDragOver, setIsDragOver] = React.useState(false);
 
-    const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    const onDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
         event.preventDefault();
         setIsDragOver(false);
+        if (isUploading) return;
         handleFileChange(event.dataTransfer.files);
-    };
+    }, [handleFileChange, isUploading]);
 
-    const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    const onDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
         event.preventDefault();
-        setIsDragOver(true);
-    };
+        if (!isUploading) setIsDragOver(true);
+    }, [isUploading]);
 
-    const onDragLeave = () => {
+    const onDragLeave = React.useCallback(() => {
         setIsDragOver(false);
-    };
+    }, []);
 
-    const handleButtonClick = () => {
+    const handleButtonClick = React.useCallback(() => {
         if (fileInputRef.current && !isUploading) {
             fileInputRef.current.click();
         }
-    };
+    }, [fileInputRef, isUploading]);
     
     // Convert the event-based handler to the files-based handler
-    const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const onInputChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         handleFileChange(e.target.files);
-    };
+    }, [handleFileChange]);
 
     return (
         <div 
             className={`
-                border-2 border-dashed rounded-lg p-6 text-center cursor-pointer 
+                border-2 border-dashed rounded-lg p-6 text-center
                 transition-colors duration-200 ease-in-out
-                ${isDragOver ? 'border-primary bg-primary/10' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}
+                ${isUploading ? 'cursor-not-allowed opacity-70 bg-gray-100 border-gray-300' : 'cursor-pointer'}
+                ${!isUploading && isDragOver ? 'border-primary bg-primary/10' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}
             `}
             onDrop={onDrop}
             onDragOver={onDragOver}
@@ -216,7 +212,7 @@ const ImageUploadArea: React.FC<ImageUploadAreaProps> = ({ fileInputRef, isUploa
             {isUploading && (
                 <div className="flex items-center justify-center mt-3">
                     <Loader2 className="h-5 w-5 animate-spin me-2 text-primary" />
-                    <span className="text-primary font-medium">جاري الرفع...</span>
+                    <span className="text-primary font-medium">جاري ضغط ورفع الصور...</span>
                 </div>
             )}
         </div>
@@ -228,14 +224,15 @@ const ImageUploadArea: React.FC<ImageUploadAreaProps> = ({ fileInputRef, isUploa
 // =========================================================================
 
 interface ImagePreviewDialogProps {
+    isOpen: boolean;
     imageUrl: string | null;
     onClose: () => void;
     patientName: string;
 }
 
-const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({ imageUrl, onClose, patientName }) => {
+const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({ isOpen, imageUrl, onClose, patientName }) => {
     return (
-        <Dialog open={!!imageUrl} onOpenChange={onClose}>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
             <DialogContent className="sm:max-w-4xl max-w-full h-full p-0" dir="rtl">
                 
                 {/* ACCESSIBILITY FIX: Visually hidden title and description (using sr-only) */}
@@ -253,19 +250,19 @@ const ImagePreviewDialog: React.FC<ImagePreviewDialogProps> = ({ imageUrl, onClo
                 
                 {/* IMAGE CONTENT */}
                 <div className="w-full h-full max-h-[95vh] overflow-y-auto">
-                    {imageUrl && (
-                        <div className="relative w-full min-h-[500px] flex items-center justify-center p-4">
-                            {/* Removed layout="fill" and added explicit width/height for better Next.js Image handling with objectFit="contain" */}
+                    <div className="relative w-full min-h-[500px] flex items-center justify-center p-4">
+                        {imageUrl ? (
                             <Image
                                 src={imageUrl}
                                 alt={`معاينة صورة المريض ${patientName}`}
                                 width={1200} 
                                 height={800} 
-                                objectFit="contain"
-                                className="rounded-lg shadow-2xl"
+                                className="rounded-lg shadow-2xl object-contain max-h-[82vh] w-auto"
                             />
-                        </div>
-                    )}
+                        ) : (
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        )}
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>
@@ -284,10 +281,32 @@ interface PatientImageManagerDialogProps {
 }
 
 export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUpdate }: PatientImageManagerDialogProps) {
-  
-  if (!patient) return null;
+  if (!patient) return null;
 
-  const {
+  return (
+    <PatientImageManagerDialogContent
+      patient={patient}
+      isOpen={isOpen}
+      setOpen={setOpen}
+      onImagesUpdate={onImagesUpdate}
+    />
+  );
+}
+
+interface PatientImageManagerDialogContentProps {
+  patient: Patient;
+  isOpen: boolean;
+  setOpen: (isOpen: boolean) => void;
+  onImagesUpdate: (updatedPatient: Patient) => void;
+}
+
+function PatientImageManagerDialogContent({
+  patient,
+  isOpen,
+  setOpen,
+  onImagesUpdate,
+}: PatientImageManagerDialogContentProps) {
+    const {
         currentImageUrls,
         isUploading,
         isDeleting,
@@ -298,16 +317,34 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
         setImageToPreview,
     } = useImageManagement(patient, onImagesUpdate);
 
-  const closeDialog = () => {
-    setOpen(false);
-  };
+  const { signedUrlMap } = useSignedPatientImages(currentImageUrls);
 
-  return (
-    <>
+  const previewDisplayUrl = imageToPreview
+    ? (imageToPreview.startsWith('data:') || imageToPreview.startsWith('blob:')
+        ? imageToPreview
+        : signedUrlMap[imageToPreview] ?? null)
+    : null;
+
+  const isAnyDeleting = React.useMemo(
+    () => Object.values(isDeleting).some(Boolean),
+    [isDeleting]
+  );
+
+  const closeDialog = React.useCallback(() => {
+    setOpen(false);
+  }, [setOpen]);
+
+  const handleUploadFiles = React.useCallback(
+    (files: FileList | null) => handleFileChange({ target: { files } } as React.ChangeEvent<HTMLInputElement>),
+    [handleFileChange]
+  );
+
+  return (
+    <>
         {/* Main Image Management Dialog */}
-        <Dialog open={isOpen} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-[800px] p-0" dir="rtl">
-            <DialogHeader className="p-4 pb-1">
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!isUploading) setOpen(open); }}>
+          <DialogContent className="sm:max-w-[800px] p-0" dir="rtl">
+            <DialogHeader className="p-4 pb-1">
                 <DialogTitle className="text-xl font-bold text-primary mb-1"> إدارة صور المريض: <span className="text-primary/90">{patient.name}</span>
                 </DialogTitle>
                  <DialogDescription className="text-sm text-muted-foreground mt-0">  عرض، إضافة، أو حذف صور السجلات الطبية للمريض.
@@ -315,34 +352,41 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                     </DialogHeader>
 
 
-            <div className="p-6 pt-0 space-y-2max-h-[70vh] overflow-y-auto">
-              
-              <ImageUploadArea 
+            <div className="p-6 pt-0 space-y-4 max-h-[70vh] overflow-y-auto">
+              
+              <ImageUploadArea 
                     fileInputRef={fileInputRef} 
                     isUploading={isUploading} 
-                    handleFileChange={(files) => handleFileChange({ target: { files } } as React.ChangeEvent<HTMLInputElement>)}
+                    handleFileChange={handleUploadFiles}
                 />
 
-              <div className="space-y-3">
-                <Label className="text-lg font-semibold block border-b pb-2">الصور الحالية ({currentImageUrls.length})</Label>
-                {currentImageUrls.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                    {currentImageUrls.map(url => {
+              <div className="space-y-3">
+                <Label className="text-lg font-semibold block border-b pb-2">الصور الحالية ({currentImageUrls.length})</Label>
+                {currentImageUrls.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                    {currentImageUrls.map(url => {
                         const isImageDeleting = isDeleting[url];
+                        const displayUrl =
+                          url.startsWith('data:') || url.startsWith('blob:')
+                            ? url
+                            : signedUrlMap[url];
                         return (
                             // Image Card Wrapper
                             <div key={url} className="relative group aspect-square">
                                 <div 
-                                    className={`relative w-full h-full cursor-pointer rounded-md border transition-all duration-300 ${isImageDeleting ? 'pointer-events-none' : 'hover:ring-2 hover:ring-primary/50'}`}
-                                    onClick={() => setImageToPreview(url)} 
+                                    className={`relative w-full h-full cursor-pointer rounded-md border overflow-hidden transition-all duration-300 ${isImageDeleting ? 'pointer-events-none' : 'hover:ring-2 hover:ring-primary/50'}`}
+                                    onClick={() => { if (!isImageDeleting) setImageToPreview(url); }} 
                                 >
-                                    <Image
-                                        src={url}
-                                        alt={`صورة مريض ${patient.name}`}
-                                        fill 
-                                        objectFit="cover"
-                                        className={`rounded-md border bg-muted transition-opacity duration-300 ${isImageDeleting ? 'opacity-30 blur-sm' : 'opacity-100'}`}
-                                    />
+                                    {displayUrl ? (
+                                        <Image
+                                            src={displayUrl}
+                                            alt={`صورة مريض ${patient.name}`}
+                                            fill 
+                                            className={`rounded-md bg-muted object-cover transition-opacity duration-300 ${isImageDeleting ? 'opacity-30 blur-sm' : 'opacity-100'}`}
+                                        />
+                                    ) : (
+                                        <Skeleton className="h-full w-full rounded-md" />
+                                    )}
                                     {/* Maximize Icon Overlay for visual cue */}
                                     <div className='absolute inset-0 flex items-center justify-center bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity'>
                                         <Maximize className='h-8 w-8 text-white drop-shadow-lg'/>
@@ -378,13 +422,14 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
-                                            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                            <AlertDialogCancel disabled={isImageDeleting}>إلغاء</AlertDialogCancel>
                                             <AlertDialogAction 
                                                 onClick={() => handleDeleteImage(url)} 
                                                 className="bg-destructive hover:bg-destructive/90"
                                                 disabled={isImageDeleting}
                                             >
-                                                نعم، قم بالحذف
+                                                {isImageDeleting ? <Loader2 className="ms-2 h-4 w-4 animate-spin" /> : null}
+                                                {isImageDeleting ? 'جاري الحذف...' : 'نعم، قم بالحذف'}
                                             </AlertDialogAction>
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
@@ -392,28 +437,29 @@ export function PatientImageManagerDialog({ patient, isOpen, setOpen, onImagesUp
                             </div>
                         );
                     })}
-              	  </div>
-                ) : (
-          	        <div className="text-center py-6 bg-secondary/20 rounded-md">
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-secondary/20 rounded-md">
                     <X className="mx-auto h-8 w-8 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground mt-2">لا توجد صور حالية. ابدأ الرفع الآن.</p>
                   </div>
-                )}
-              </div>
-            </div>
+                )}
+              </div>
+            </div>
 
-            <DialogFooter className="p-6 pt-1 border-t">
-              <Button variant="outline" onClick={closeDialog} disabled={isUploading}>إغلاق</Button>
-      	      </DialogFooter>
-      	    </DialogContent>
-      	  </Dialog>
+            <DialogFooter className="p-6 pt-1 border-t">
+              <Button variant="outline" onClick={closeDialog} disabled={isUploading || isAnyDeleting}>إغلاق</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Image Preview Dialog */}
         <ImagePreviewDialog 
-            imageUrl={imageToPreview} 
+            isOpen={Boolean(imageToPreview)}
+            imageUrl={previewDisplayUrl} 
             onClose={() => setImageToPreview(null)} 
             patientName={patient.name}
         />
     </>
-  );
+  );
 }

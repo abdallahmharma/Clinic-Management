@@ -9,6 +9,7 @@ import { AtSign, Phone, User, Edit3, Trash2, Calendar } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
+import { useSignedPatientImages } from '@/hooks/use-signed-patient-images';
 
 
 interface PatientCardProps {
@@ -18,17 +19,27 @@ interface PatientCardProps {
 }
 
 export function PatientCard({ patient, onEdit, onDelete }: PatientCardProps) {
+  const { signedUrlMap } = useSignedPatientImages(patient.imageUrls);
+  const primaryImage =
+    Array.isArray(patient.imageUrls) && patient.imageUrls.length > 0
+      ? patient.imageUrls[0]
+      : undefined;
+  const resolvedImageSrc = primaryImage
+    ? (primaryImage.startsWith('data:') || primaryImage.startsWith('blob:')
+        ? primaryImage
+        : signedUrlMap[primaryImage])
+    : undefined;
+
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
       <CardHeader className="p-0">
         <div className="relative h-40 w-full bg-muted">
           <Image
-            src={Array.isArray(patient.imageUrls) && patient.imageUrls.length > 0 ? patient.imageUrls[0] : 'https://placehold.co/600x400.png'}
+            src={resolvedImageSrc || 'https://placehold.co/600x400.png'}
             alt={patient.name}
-            layout="fill"
-            objectFit="cover"
+            fill
             data-ai-hint="person portrait that represent a patient"
-            className={!patient.imageUrls || patient.imageUrls.length === 0 ? 'opacity-50' : ''}
+            className={`object-cover ${!resolvedImageSrc ? 'opacity-50' : ''}`}
           />
         </div>
       </CardHeader>

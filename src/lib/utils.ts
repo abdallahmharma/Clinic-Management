@@ -7,34 +7,51 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Extracts the storage path from a Supabase public URL.
- * @param publicUrl The public URL of the file in Supabase Storage.
- * @param bucketName The name of the bucket.
- * @returns The file path within the bucket, or null if parsing fails.
- * Example: "public/image.jpg"
+ * Extracts the storage path inside a Supabase bucket from either:
+ * - a full Supabase Storage URL (public, signed, or authenticated)
+ * - or a direct relative storage path like "public/image.webp"
  */
-export function getStoragePathFromUrl(publicUrl: string, bucketName: string): string | null {
+export function getStoragePathFromUrl(urlOrPath: string, bucketName = 'patient-images'): string | null {
+  if (!urlOrPath) return null;
+  const trimmed = urlOrPath.trim();
+  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return null;
+  }
+
+  // Handle direct relative storage path (e.g. "public/patient-123.webp" or "/patient-images/public/...")
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    const withoutLeadingSlashes = trimmed.replace(/^\/+/, '');
+    if (withoutLeadingSlashes.startsWith(`${bucketName}/`)) {
+      return withoutLeadingSlashes.slice(bucketName.length + 1) || null;
+    }
+    return withoutLeadingSlashes;
+  }
+
   try {
-    const url = new URL(publicUrl);
-    // Expected pathname format: /storage/v1/object/public/bucketName/path/to/file.jpg
-    // Or for non-public files (if used, though typically these are public URLs):
-    // /storage/v1/object/authenticated/bucketName/path/to/file.jpg
+    const url = new URL(trimmed);
     const pathParts = url.pathname.split('/');
-    
-    // Find the index of the bucket name in the path
     const bucketIndex = pathParts.indexOf(bucketName);
 
     if (bucketIndex !== -1 && bucketIndex + 1 < pathParts.length) {
-      // The actual file path is everything after the bucket name
       return decodeURIComponent(pathParts.slice(bucketIndex + 1).join('/'));
     }
-    
-    console.warn(`Could not extract storage path from URL: ${publicUrl}. Bucket name "${bucketName}" not found or path is incomplete.`);
+
     return null;
   } catch (error) {
-    console.error("Error parsing URL to get storage path:", publicUrl, error);
+    console.error("Error parsing URL to get storage path:", urlOrPath, error);
     return null;
   }
+}
+
+export function isDisplayableImageSrc(src?: string | null): boolean {
+  if (!src) return false;
+  return (
+    src.startsWith('https://') ||
+    src.startsWith('http://') ||
+    src.startsWith('data:') ||
+    src.startsWith('blob:') ||
+    src.startsWith('/')
+  );
 }
 
 /**

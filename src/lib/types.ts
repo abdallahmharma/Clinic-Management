@@ -13,6 +13,7 @@ export interface Appointment {
   id: string;
   patientId: string;
   patientName: string; // Denormalized for easier display
+  patientPhone?: string; // Joined from patients.phone
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   type: string; // e.g., 'Check-up', 'Consultation'
