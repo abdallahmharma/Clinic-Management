@@ -107,3 +107,81 @@ export async function compressImageToWebP(
   }
 }
 
+/**
+ * Formats a Jordanian phone number into international WhatsApp format without "+" or spaces:
+ * - "07XXXXXXXX" or "7XXXXXXXX" -> "9627XXXXXXXX"
+ * - "+962..." / "00962..." / "962..." -> "962..."
+ * Returns null if the number is missing or invalid.
+ */
+export function formatJordanPhoneForWhatsApp(phone?: string | null): string | null {
+  if (!phone) return null;
+  let digits = phone.replace(/\D/g, '');
+  if (!digits) return null;
+
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.startsWith('9620') && digits.length >= 12) {
+    digits = `962${digits.slice(4)}`;
+  }
+
+  if (digits.startsWith('962')) {
+    return digits.length >= 11 && digits.length <= 13 ? digits : null;
+  }
+
+  if (digits.startsWith('0') && digits.length >= 9 && digits.length <= 10) {
+    return `962${digits.slice(1)}`;
+  }
+
+  if (digits.startsWith('7') && digits.length === 9) {
+    return `962${digits}`;
+  }
+
+  return null;
+}
+
+export interface BuildWhatsAppUrlParams {
+  phone?: string | null;
+  patientName?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
+  sessionType?: string;
+  customMessage?: string;
+}
+
+/**
+ * Builds a direct https://wa.me/<phone>?text=<encodedMessage> link with a clean Arabic reminder or contact message.
+ * Returns null if the phone number cannot be formatted to a valid Jordanian number.
+ */
+export function buildWhatsAppUrl({
+  phone,
+  patientName,
+  appointmentDate,
+  appointmentTime,
+  sessionType,
+  customMessage,
+}: BuildWhatsAppUrlParams): string | null {
+  const formattedPhone = formatJordanPhoneForWhatsApp(phone);
+  if (!formattedPhone) return null;
+
+  const recipient = patientName?.trim() || 'مريضنا الكريم';
+  let message = customMessage?.trim();
+
+  if (!message) {
+    if (appointmentDate || appointmentTime || sessionType) {
+      const lines = [`مرحباً ${recipient}، نود تذكيرك بموعدك في العيادة:`];
+      if (appointmentDate) lines.push(`التاريخ: ${appointmentDate}`);
+      if (appointmentTime) lines.push(`الوقت: ${appointmentTime}`);
+      if (sessionType) lines.push(`نوع الجلسة: ${sessionType}`);
+      lines.push('نرجو التواصل معنا في حال الرغبة بتعديل الموعد. نتمنى لك دوام الصحة والعافية.');
+      message = lines.join('\n');
+    } else {
+      message = `مرحباً ${recipient}، نتواصل معك من العيادة بخصوص متابعتك الطبية.`;
+    }
+  }
+
+  return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+}
+
+

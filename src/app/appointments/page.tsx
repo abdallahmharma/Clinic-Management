@@ -13,6 +13,7 @@ import {
   Edit3,
   FileText,
   Loader2,
+  MessageCircle,
   Phone,
   PlusCircle,
   RefreshCw,
@@ -43,6 +44,7 @@ import {
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
 import type { Appointment, Patient } from '@/lib/types';
 import { getAppointments, getPatients, deleteAppointment as apiDeleteAppointment } from '@/lib/api';
+import { buildWhatsAppUrl } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
 type FilterMode = 'today' | 'upcoming' | 'all' | 'date';
@@ -321,7 +323,7 @@ export default function AppointmentsPage() {
             onClick={handleAddAppointment}
             size="lg"
             className="flex-shrink-0"
-            disabled={patients.length === 0 && !isLoading}
+            disabled={isLoading || patients.length === 0}
           >
             <PlusCircle className="ms-2 h-5 w-5" />
             إضافة موعد جديد
@@ -445,97 +447,136 @@ export default function AppointmentsPage() {
         </div>
       ) : visibleAppointments.length > 0 ? (
         <div className="space-y-3">
-          {visibleAppointments.map(({ appointment, phone, formattedDate, isToday, isUpcoming }) => (
-            <Card
-              key={appointment.id}
-              className={`shadow-sm transition-colors hover:border-primary/40 ${
-                isToday && isUpcoming ? 'border-primary/35 bg-card' : ''
-              }`}
-            >
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  {/* Left/Main Info */}
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-4 flex-1 min-w-0">
-                    {/* Time Block */}
-                    <div className="flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2 rounded-lg border bg-primary/5 px-3.5 py-2.5 sm:min-w-[104px] text-center flex-shrink-0">
-                      <div className="flex items-center gap-1.5 text-lg font-bold text-primary" dir="ltr">
-                        <Clock className="h-4 w-4" />
-                        <span>{appointment.time.slice(0, 5)}</span>
-                      </div>
-                      <Badge
-                        variant={isUpcoming ? 'default' : 'secondary'}
-                        className="text-[11px] font-medium"
-                      >
-                        {isToday ? (isUpcoming ? 'اليوم · قادم' : 'اليوم · منتهي') : (isUpcoming ? 'قادم' : 'سابق')}
-                      </Badge>
-                    </div>
+          {visibleAppointments.map(({ appointment, phone, formattedDate, isToday, isUpcoming }) => {
+            const whatsAppUrl = buildWhatsAppUrl({
+              phone: appointment.patientPhone || patientPhoneMap.get(appointment.patientId),
+              patientName: appointment.patientName,
+              appointmentDate: formattedDate,
+              appointmentTime: appointment.time.slice(0, 5),
+              sessionType: appointment.type,
+            });
 
-                    {/* Patient & Details */}
-                    <div className="space-y-2 flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <Link
-                          href={`/patients/${appointment.patientId}`}
-                          className="text-lg font-bold text-primary hover:underline inline-flex items-center gap-1.5"
+            return (
+              <Card
+                key={appointment.id}
+                className={`shadow-sm transition-colors hover:border-primary/40 ${
+                  isToday && isUpcoming ? 'border-primary/35 bg-card' : ''
+                }`}
+              >
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    {/* Left/Main Info */}
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-4 flex-1 min-w-0">
+                      {/* Time Block */}
+                      <div className="flex sm:flex-col items-center sm:items-center justify-between sm:justify-center gap-2 rounded-lg border bg-primary/5 px-3.5 py-2.5 sm:min-w-[104px] text-center flex-shrink-0">
+                        <div className="flex items-center gap-1.5 text-lg font-bold text-primary" dir="ltr">
+                          <Clock className="h-4 w-4" />
+                          <span>{appointment.time.slice(0, 5)}</span>
+                        </div>
+                        <Badge
+                          variant={isUpcoming ? 'default' : 'secondary'}
+                          className="text-[11px] font-medium"
                         >
-                          {appointment.patientName}
-                        </Link>
-                        <Badge variant="outline" className="gap-1 font-medium">
-                          <Stethoscope className="h-3.5 w-3.5 text-primary" />
-                          {appointment.type}
+                          {isToday ? (isUpcoming ? 'اليوم · قادم' : 'اليوم · منتهي') : (isUpcoming ? 'قادم' : 'سابق')}
                         </Badge>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
-                        <span className="inline-flex items-center gap-1.5">
-                          <Phone className="h-4 w-4 text-primary" />
-                          <span dir="ltr" className="font-medium text-foreground">{phone}</span>
-                        </span>
-                        {(filterMode === 'upcoming' || filterMode === 'all') && (
-                          <span className="inline-flex items-center gap-1.5">
-                            <CalendarIcon className="h-4 w-4 text-primary" />
-                            <span>{formattedDate}</span>
-                          </span>
-                        )}
-                      </div>
+                      {/* Patient & Details */}
+                      <div className="space-y-2 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <Link
+                            href={`/patients/${appointment.patientId}`}
+                            className="text-lg font-bold text-primary hover:underline inline-flex items-center gap-1.5"
+                          >
+                            {appointment.patientName}
+                          </Link>
+                          <Badge variant="outline" className="gap-1 font-medium">
+                            <Stethoscope className="h-3.5 w-3.5 text-primary" />
+                            {appointment.type}
+                          </Badge>
+                        </div>
 
-                      <div className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
-                        <StickyNote className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                        <span className={appointment.notes ? 'text-foreground' : 'text-muted-foreground'}>
-                          {appointment.notes || 'لا توجد ملاحظات مسجلة'}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Phone className="h-4 w-4 text-primary" />
+                            <span dir="ltr" className="font-medium text-foreground">{phone}</span>
+                          </span>
+                          {(filterMode === 'upcoming' || filterMode === 'all') && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <CalendarIcon className="h-4 w-4 text-primary" />
+                              <span>{formattedDate}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-start gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
+                          <StickyNote className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <span className={appointment.notes ? 'text-foreground' : 'text-muted-foreground'}>
+                            {appointment.notes || 'لا توجد ملاحظات مسجلة'}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Quick Actions */}
-                  <div className="flex flex-wrap items-center gap-2 lg:flex-shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0">
-                    <Button variant="secondary" size="sm" asChild>
-                      <Link href={`/patients/${appointment.patientId}`}>
-                        <FileText className="ms-1.5 h-4 w-4" />
-                        السجل
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditAppointment(appointment)}
-                    >
-                      <Edit3 className="ms-1.5 h-4 w-4" />
-                      تعديل
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => confirmDeleteAppointment(appointment)}
-                    >
-                      <Trash2 className="ms-1.5 h-4 w-4" />
-                      حذف
-                    </Button>
+                    {/* Quick Actions */}
+                    <div className="flex flex-wrap items-center gap-2 lg:flex-shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0">
+                      {whatsAppUrl ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          asChild
+                          className="border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                        >
+                          <a
+                            href={whatsAppUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`تذكير واتساب للمريض ${appointment.patientName}`}
+                          >
+                            <MessageCircle className="ms-1.5 h-4 w-4" />
+                            تذكير واتساب
+                          </a>
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          title="رقم الهاتف غير صالح أو غير متوفر لإرسال رسالة واتساب"
+                        >
+                          <MessageCircle className="ms-1.5 h-4 w-4" />
+                          تذكير واتساب
+                        </Button>
+                      )}
+                      <Button variant="secondary" size="sm" asChild>
+                        <Link href={`/patients/${appointment.patientId}`}>
+                          <FileText className="ms-1.5 h-4 w-4" />
+                          السجل
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditAppointment(appointment)}
+                      >
+                        <Edit3 className="ms-1.5 h-4 w-4" />
+                        تعديل
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => confirmDeleteAppointment(appointment)}
+                      >
+                        <Trash2 className="ms-1.5 h-4 w-4" />
+                        حذف
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12 border rounded-lg shadow-sm bg-card">

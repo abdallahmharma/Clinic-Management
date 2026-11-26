@@ -18,6 +18,7 @@ import {
   ImagePlus,
   Loader2,
   Maximize,
+  MessageCircle,
   Phone,
   RefreshCw,
   StickyNote,
@@ -33,6 +34,7 @@ import {
   getPatientById,
   updatePatient,
 } from '@/lib/api';
+import { buildWhatsAppUrl } from '@/lib/utils';
 import { useSignedPatientImages } from '@/hooks/use-signed-patient-images';
 import type { Appointment, Patient } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -330,6 +332,10 @@ export default function PatientDetailPage() {
         ? previewImageUrl
         : signedUrlMap[previewImageUrl] ?? null)
     : null;
+  const patientWhatsAppUrl = buildWhatsAppUrl({
+    phone: patient.phone,
+    patientName: patient.name,
+  });
 
   const renderAppointmentTimeline = (items: Appointment[], emptyText: string) => {
     if (items.length === 0) {
@@ -357,6 +363,13 @@ export default function PatientDetailPage() {
       <div className="relative space-y-4 before:absolute before:top-3 before:bottom-3 before:right-4 before:w-0.5 before:bg-border">
         {items.map((appointment) => {
           const upcoming = isAppointmentUpcoming(appointment);
+          const appointmentWhatsAppUrl = buildWhatsAppUrl({
+            phone: patient.phone,
+            patientName: patient.name,
+            appointmentDate: formatAppointmentDate(appointment.date),
+            appointmentTime: appointment.time.slice(0, 5),
+            sessionType: appointment.type,
+          });
           return (
             <div key={appointment.id} className="relative pe-10">
               <span
@@ -377,6 +390,36 @@ export default function PatientDetailPage() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1">
+                      {appointmentWhatsAppUrl ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400"
+                          asChild
+                          title="تذكير واتساب لهذا الموعد"
+                        >
+                          <a
+                            href={appointmentWhatsAppUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label="تذكير واتساب للموعد"
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          disabled
+                          title="رقم الهاتف غير صالح أو غير متوفر لإرسال رسالة واتساب"
+                          aria-label="تذكير واتساب غير متاح"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -467,6 +510,33 @@ export default function PatientDetailPage() {
             )}
             {isRefreshing ? 'جاري التحديث...' : 'تحديث'}
           </Button>
+          {patientWhatsAppUrl ? (
+            <Button
+              variant="outline"
+              asChild
+              className="border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+            >
+              <a
+                href={patientWhatsAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`مراسلة واتساب للمريض ${patient.name}`}
+              >
+                <MessageCircle className="ms-2 h-4 w-4" />
+                واتساب
+              </a>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              disabled
+              title="رقم الهاتف غير صالح أو غير متوفر لإرسال رسالة واتساب"
+            >
+              <MessageCircle className="ms-2 h-4 w-4" />
+              واتساب
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setIsPatientFormOpen(true)}>
             <Edit3 className="ms-2 h-4 w-4" />
             تعديل البيانات

@@ -3,11 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2, Image as ImageIcon, FileText } from 'lucide-react';
+import { PlusCircle, Loader2, Search, RefreshCw, Users, Edit3, Trash2, Image as ImageIcon, FileText, MessageCircle } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { PatientForm } from '@/components/patients/PatientForm';
 import type { Appointment, Patient } from '@/lib/types';
 import { getPatients, deletePatient as apiDeletePatient } from '@/lib/api';
+import { buildWhatsAppUrl } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -241,7 +242,7 @@ export default function PatientsPage() {
                 <TableHead className="w-[70px] text-center">العمر</TableHead>
                 <TableHead>رقم الهاتف</TableHead>
                 <TableHead>تاريخ التسجيل</TableHead>
-                <TableHead className="w-[260px] text-center">إجراءات</TableHead>
+                <TableHead className="w-[340px] text-center">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -252,6 +253,10 @@ export default function PatientsPage() {
                       ? firstImg
                       : signedUrlMap[firstImg])
                   : undefined;
+                const whatsAppUrl = buildWhatsAppUrl({
+                  phone: patient.phone,
+                  patientName: patient.name,
+                });
 
                 return (
                   <TableRow key={patient.id}>
@@ -297,6 +302,36 @@ export default function PatientsPage() {
                           السجل
                         </Link>
                       </Button>
+                      {whatsAppUrl ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          asChild
+                          className="ms-1 border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                        >
+                          <a
+                            href={whatsAppUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`مراسلة واتساب للمريض ${patient.name}`}
+                          >
+                            <MessageCircle className="ms-1 h-4 w-4" />
+                            واتساب
+                          </a>
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          className="ms-1"
+                          title="رقم الهاتف غير صالح أو غير متوفر لإرسال رسالة واتساب"
+                        >
+                          <MessageCircle className="ms-1 h-4 w-4" />
+                          واتساب
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
