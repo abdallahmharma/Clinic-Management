@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DailyAppointments } from '@/components/dashboard/DailyAppointments';
+import { DashboardStats } from '@/components/dashboard/DashboardStats';
 import type { Appointment } from '@/lib/types';
-import { getAppointmentsByDate } from '@/lib/api'; // Using new API
+import { getAppointments, getAppointmentsByDate, getPatients } from '@/lib/api'; // Using new API
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +21,56 @@ export default function DashboardPage() {
   const [appointments, setAppointments] = React.useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
+  const [statsLoading, setStatsLoading] = React.useState(true);
+  const [stats, setStats] = React.useState({
+    totalPatients: 0,
+    monthlyAppointmentsCount: 0,
+    upcomingTodayCount: 0,
+    totalTodayCount: 0,
+  });
+
+  React.useEffect(() => {
+    let isMounted = true;
+    setStatsLoading(true);
+
+    Promise.all([getPatients(), getAppointments()])
+      .then(([patientsData, allAppointments]) => {
+        if (!isMounted) return;
+        const now = new Date();
+        const currentMonthPrefix = format(now, 'yyyy-MM');
+        const todayString = format(now, 'yyyy-MM-dd');
+        const currentTimeString = format(now, 'HH:mm');
+
+        const monthlyAppointmentsCount = allAppointments.filter((appt) =>
+          appt.date.startsWith(currentMonthPrefix)
+        ).length;
+
+        const todayAppointments = allAppointments.filter(
+          (appt) => appt.date === todayString
+        );
+
+        const upcomingTodayCount = todayAppointments.filter(
+          (appt) => appt.time.slice(0, 5) >= currentTimeString
+        ).length;
+
+        setStats({
+          totalPatients: patientsData.length,
+          monthlyAppointmentsCount,
+          upcomingTodayCount,
+          totalTodayCount: todayAppointments.length,
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to fetch dashboard stats:", error);
+      })
+      .finally(() => {
+        if (isMounted) setStatsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   React.useEffect(() => {
     if (selectedDate) {
@@ -62,6 +113,14 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      <DashboardStats
+        totalPatients={stats.totalPatients}
+        monthlyAppointmentsCount={stats.monthlyAppointmentsCount}
+        upcomingTodayCount={stats.upcomingTodayCount}
+        totalTodayCount={stats.totalTodayCount}
+        isLoading={statsLoading}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1 shadow-lg">

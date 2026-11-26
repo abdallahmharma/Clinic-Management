@@ -22,12 +22,24 @@ const patientSchema = z.object({
   name: z.string().min(3, { message: "يجب أن يكون الاسم 3 أحرف على الأقل" }),
   age: z.coerce.number().min(0, { message: "يجب أن يكون العمر رقمًا موجبًا" }).max(120),
   phone: z.string().regex(/^0\d{9}$/, { message: "رقم الهاتف يجب أن يتكون من 10 أرقام ويبدأ بـ 0 (مثال: 0772150001)" }),
-  imageFiles: z.custom<FileList>()
+  imageFiles: z
+    .any()
     .optional()
-    .refine(files => !files || files.length === 0 || Array.from(files).every(file => file.size <= MAX_FILE_SIZE_BYTES), 
-            `حجم كل ملف يجب أن لا يتجاوز ${MAX_FILE_SIZE_MB} ميجابايت.`)
-    .refine(files => !files || files.length === 0 || Array.from(files).every(file => ACCEPTED_IMAGE_TYPES.includes(file.type)),
-            `فقط صيغ .jpg, .jpeg, .png, .webp مدعومة.`),
+    .nullable()
+    .refine(
+      (files) =>
+        !files ||
+        files.length === 0 ||
+        Array.from(files as FileList).every((file) => file.size <= MAX_FILE_SIZE_BYTES),
+      `حجم كل ملف يجب أن لا يتجاوز ${MAX_FILE_SIZE_MB} ميجابايت.`
+    )
+    .refine(
+      (files) =>
+        !files ||
+        files.length === 0 ||
+        Array.from(files as FileList).every((file) => ACCEPTED_IMAGE_TYPES.includes(file.type)),
+      `فقط صيغ .jpg, .jpeg, .png, .webp مدعومة.`
+    ),
 });
 
 type PatientFormData = z.infer<typeof patientSchema>;
@@ -84,32 +96,36 @@ export function PatientForm({ patient, onSuccess, setOpen }: PatientFormProps) {
 
   const onSubmit = async (data: PatientFormData) => {
     setIsSubmitting(true);
-    let currentImageUrls: string[] = [...existingImageUrls];
+    const currentImageUrls: string[] = [...existingImageUrls];
+    const filesToUpload: File[] =
+      data.imageFiles && data.imageFiles.length > 0
+        ? Array.from(data.imageFiles as FileList)
+        : selectedFiles;
 
     try {
-      if (selectedFiles.length > 0) {
-        const uploadPromises = selectedFiles.map(file => 
-          uploadPatientImage(file, patient?.id) 
+      if (filesToUpload.length > 0) {
+        const uploadPromises = filesToUpload.map((file) =>
+          uploadPatientImage(file, patient?.id)
         );
         const newUploadedUrls = await Promise.all(uploadPromises);
         currentImageUrls.push(...newUploadedUrls);
       }
 
-      const patientInputData = {
+      const patientInputData: Omit<Patient, 'id' | 'createdAt'> = {
         name: data.name,
         age: Number(data.age),
         phone: data.phone,
-        imageUrls: currentImageUrls.length > 0 ? currentImageUrls : null,
+        imageUrls: currentImageUrls,
       };
 
       let result: Patient;
       if (patient && patient.id) {
-        const updatedPatient = await updatePatient(patient.id, patientInputData as Partial<Omit<Patient, 'id' | 'createdAt'>>);
+        const updatedPatient = await updatePatient(patient.id, patientInputData);
         if (!updatedPatient) throw new Error("Failed to update patient");
         result = updatedPatient;
         toast({ title: "نجاح", description: "تم تعديل بيانات المريض بنجاح." });
       } else {
-        result = await addPatient(patientInputData as Omit<Patient, 'id' | 'createdAt'>);
+        result = await addPatient(patientInputData);
         toast({ title: "نجاح", description: "تمت إضافة المريض بنجاح." });
       }
       

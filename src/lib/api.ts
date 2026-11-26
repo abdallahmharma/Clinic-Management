@@ -1,5 +1,6 @@
 
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { compressImageToWebP } from './utils';
 import type { Database } from './database.types';
 import type { Patient, Appointment } from './types';
 
@@ -220,7 +221,7 @@ export async function addPatient(patientData: Omit<Patient, 'id' | 'createdAt'>)
     name: patientData.name,
     age: patientData.age,
     phone: patientData.phone,
-    image_urls: patientData.imageUrls, // Ensure this is null or an array of strings
+    image_urls: patientData.imageUrls ?? [],
   };
   const { data, error } = await supabase
     .from('patients')
@@ -262,7 +263,7 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
    if (patientData.name !== undefined) patientToUpdate.name = patientData.name;
    if (patientData.age !== undefined) patientToUpdate.age = patientData.age;
    if (patientData.phone !== undefined) patientToUpdate.phone = patientData.phone;
-   if (patientData.imageUrls !== undefined) patientToUpdate.image_urls = patientData.imageUrls;
+   if (patientData.imageUrls !== undefined) patientToUpdate.image_urls = patientData.imageUrls ?? [];
 
   const { data, error } = await supabase
     .from('patients')
@@ -447,26 +448,34 @@ export async function deleteAppointment(id: string): Promise<void> {
 
 // Supabase storage for image upload
 export async function uploadPatientImage(file: File, identifier?: string): Promise<string> {
+  const processedFile = await compressImageToWebP(file, 1200, 0.8);
+
   if (!isSupabaseConfigured || !supabase) {
     if (typeof FileReader !== 'undefined') {
       return await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result));
         reader.onerror = () => reject(new Error('Failed to read image file'));
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(processedFile);
       });
     }
-    return `https://placehold.co/400x400?text=${encodeURIComponent(file.name)}`;
+    return `https://placehold.co/400x400?text=${encodeURIComponent(processedFile.name)}`;
   }
 
-    const fileExt = file.name.split('.').pop();
-    const uniqueFilePrefix = identifier || crypto.randomUUID(); // Use provided identifier or generate a new UUID
-    const fileName = `${uniqueFilePrefix}-${Date.now()}.${fileExt}`;
+    const fileExt =
+      processedFile.type === 'image/webp'
+        ? 'webp'
+        : processedFile.name.split('.').pop() || 'webp';
+    const uniqueFilePrefix = identifier || crypto.randomUUID();
+    const uniqueSuffix = Math.random().toString(36).slice(2, 7);
+    const fileName = `${uniqueFilePrefix}-${Date.now()}-${uniqueSuffix}.${fileExt}`;
     const filePath = `public/${fileName}`;
 
     const { data, error: uploadError } = await supabase.storage
       .from('patient-images')
-      .upload(filePath, file);
+      .upload(filePath, processedFile, {
+        contentType: processedFile.type || 'image/webp',
+      });
 
     if (uploadError) {
       console.error('Error uploading image to Supabase Storage:', { message: uploadError.message, name: (uploadError as any).name, status: (uploadError as any).status }, 'File path:', filePath);

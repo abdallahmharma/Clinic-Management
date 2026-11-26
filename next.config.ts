@@ -18,7 +18,7 @@ module.exports = {
       },
       {
         protocol: 'https',
-        hostname: 'vqvqnwpqxzhyiyhddjmy.supabase.co', // Added Supabase hostname
+        hostname: 'ndqywjgosioxsdhujubm.supabase.co',
         port: '',
         pathname: '/**',
       },

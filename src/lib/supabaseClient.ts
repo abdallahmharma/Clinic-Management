@@ -46,8 +46,7 @@ export interface PatientRow {
   name: string;
   age: number;
   phone: string;
-  email: string;
-  image_url?: string;
+  image_urls: string[] | null;
   created_at: string;
 }
 
@@ -56,7 +55,8 @@ export interface AppointmentRow {
   patient_id: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
-  notes?: string;
+  type: string;
+  notes?: string | null;
   created_at: string;
 }
 
