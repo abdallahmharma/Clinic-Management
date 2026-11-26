@@ -12,7 +12,7 @@ import type { Patient } from '@/lib/types';
 import { updatePatient, uploadPatientImage } from '@/lib/api';
 import { Loader2, Trash2, UploadCloud, X, AlertTriangle, Maximize } from 'lucide-react'; 
 import { getStoragePathFromUrl } from '@/lib/utils';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -102,12 +102,14 @@ const useImageManagement = (patient: Patient, onImagesUpdate: (updatedPatient: P
         setIsDeleting(prev => ({ ...prev, [imageUrlToDelete]: true }));
         try {
             // 1. Delete from Storage (Supabase)
-            const storagePath = getStoragePathFromUrl(imageUrlToDelete, 'patient-images');
-            if (storagePath) {
-                const { error: storageError } = await supabase.storage.from('patient-images').remove([storagePath]);
-                if (storageError) {
-                    console.error("Error deleting image from storage:", storageError);
-                    toast({ title: "تحذير", description: "فشل حذف الصورة من التخزين السحابي. سيتم حذف الرابط من قاعدة البيانات.", variant: "default", duration: 7000 });
+            if (isSupabaseConfigured && supabase) {
+                const storagePath = getStoragePathFromUrl(imageUrlToDelete, 'patient-images');
+                if (storagePath) {
+                    const { error: storageError } = await supabase.storage.from('patient-images').remove([storagePath]);
+                    if (storageError) {
+                        console.error("Error deleting image from storage:", storageError);
+                        toast({ title: "تحذير", description: "فشل حذف الصورة من التخزين السحابي. سيتم حذف الرابط من قاعدة البيانات.", variant: "default", duration: 7000 });
+                    }
                 }
             }
             

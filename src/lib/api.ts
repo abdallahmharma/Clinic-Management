@@ -1,6 +1,139 @@
 
-import { supabase } from './supabaseClient';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
+import type { Database } from './database.types';
 import type { Patient, Appointment } from './types';
+
+// --- In-Memory / LocalStorage Mock Store (used when Supabase is not configured) ---
+const MOCK_PATIENTS_KEY = 'clinic_mock_patients_v1';
+const MOCK_APPOINTMENTS_KEY = 'clinic_mock_appointments_v1';
+
+function getTodayString(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getInitialMockPatients(): Patient[] {
+  const nowIso = new Date().toISOString();
+  return [
+    {
+      id: 'mock-patient-1',
+      name: 'سارة أحمد محمد',
+      age: 29,
+      phone: '0771234567',
+      imageUrls: [],
+      createdAt: nowIso,
+    },
+    {
+      id: 'mock-patient-2',
+      name: 'علي حسن كريم',
+      age: 35,
+      phone: '0789876543',
+      imageUrls: [],
+      createdAt: nowIso,
+    },
+    {
+      id: 'mock-patient-3',
+      name: 'نور الهدى خالد',
+      age: 26,
+      phone: '0795551234',
+      imageUrls: [],
+      createdAt: nowIso,
+    },
+  ];
+}
+
+function getInitialMockAppointments(): Appointment[] {
+  const today = getTodayString();
+  const nowIso = new Date().toISOString();
+  return [
+    {
+      id: 'mock-appt-1',
+      patientId: 'mock-patient-1',
+      patientName: 'سارة أحمد محمد',
+      date: today,
+      time: '10:00',
+      type: 'بشرة',
+      notes: 'جلسة تنظيف ونضارة البشرة',
+      createdAt: nowIso,
+    },
+    {
+      id: 'mock-appt-2',
+      patientId: 'mock-patient-2',
+      patientName: 'علي حسن كريم',
+      date: today,
+      time: '12:30',
+      type: 'استشارة',
+      notes: 'متابعة دورية',
+      createdAt: nowIso,
+    },
+  ];
+}
+
+let memoryPatients: Patient[] | null = null;
+let memoryAppointments: Appointment[] | null = null;
+
+function loadMockPatients(): Patient[] {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(MOCK_PATIENTS_KEY);
+      if (raw) {
+        memoryPatients = JSON.parse(raw);
+        return memoryPatients!;
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+  if (!memoryPatients) {
+    memoryPatients = getInitialMockPatients();
+    saveMockPatients(memoryPatients);
+  }
+  return memoryPatients;
+}
+
+function saveMockPatients(patients: Patient[]): void {
+  memoryPatients = patients;
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(MOCK_PATIENTS_KEY, JSON.stringify(patients));
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+}
+
+function loadMockAppointments(): Appointment[] {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(MOCK_APPOINTMENTS_KEY);
+      if (raw) {
+        memoryAppointments = JSON.parse(raw);
+        return memoryAppointments!;
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+  if (!memoryAppointments) {
+    memoryAppointments = getInitialMockAppointments();
+    saveMockAppointments(memoryAppointments);
+  }
+  return memoryAppointments;
+}
+
+function saveMockAppointments(appointments: Appointment[]): void {
+  memoryAppointments = appointments;
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(MOCK_APPOINTMENTS_KEY, JSON.stringify(appointments));
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+}
 
 // Helper to map Supabase patient row to our Patient type
 function mapPatientRowToPatient(row: any): Patient {
@@ -31,6 +164,12 @@ function mapAppointmentRowToAppointment(row: any): Appointment {
 
 // Patient Functions
 export async function getPatients(): Promise<Patient[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [...loadMockPatients()].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
   const { data, error } = await supabase
     .from('patients')
     .select('*')
@@ -44,6 +183,10 @@ export async function getPatients(): Promise<Patient[]> {
 }
 
 export async function getPatientById(id: string): Promise<Patient | undefined> {
+  if (!isSupabaseConfigured || !supabase) {
+    return loadMockPatients().find(p => p.id === id);
+  }
+
   const { data, error } = await supabase
     .from('patients')
     .select('*')
@@ -59,6 +202,20 @@ export async function getPatientById(id: string): Promise<Patient | undefined> {
 }
 
 export async function addPatient(patientData: Omit<Patient, 'id' | 'createdAt'>): Promise<Patient> {
+  if (!isSupabaseConfigured || !supabase) {
+    const patients = loadMockPatients();
+    const newPatient: Patient = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `patient-${Date.now()}`,
+      name: patientData.name,
+      age: patientData.age,
+      phone: patientData.phone,
+      imageUrls: patientData.imageUrls || [],
+      createdAt: new Date().toISOString(),
+    };
+    saveMockPatients([newPatient, ...patients]);
+    return newPatient;
+  }
+
   const patientToInsert = {
     name: patientData.name,
     age: patientData.age,
@@ -79,7 +236,29 @@ export async function addPatient(patientData: Omit<Patient, 'id' | 'createdAt'>)
 }
 
 export async function updatePatient(id: string, patientData: Partial<Omit<Patient, 'id' | 'createdAt'>>): Promise<Patient | null> {
-   const patientToUpdate: Record<string, any> = {};
+  if (!isSupabaseConfigured || !supabase) {
+    const patients = loadMockPatients();
+    const idx = patients.findIndex(p => p.id === id);
+    if (idx === -1) return null;
+    const updated: Patient = {
+      ...patients[idx],
+      ...patientData,
+      imageUrls: patientData.imageUrls !== undefined ? (patientData.imageUrls || []) : patients[idx].imageUrls,
+    };
+    const nextPatients = [...patients];
+    nextPatients[idx] = updated;
+    saveMockPatients(nextPatients);
+
+    if (patientData.name !== undefined) {
+      const appointments = loadMockAppointments();
+      saveMockAppointments(
+        appointments.map(a => (a.patientId === id ? { ...a, patientName: patientData.name! } : a))
+      );
+    }
+    return updated;
+  }
+
+   const patientToUpdate: Database['public']['Tables']['patients']['Update'] = {};
    if (patientData.name !== undefined) patientToUpdate.name = patientData.name;
    if (patientData.age !== undefined) patientToUpdate.age = patientData.age;
    if (patientData.phone !== undefined) patientToUpdate.phone = patientData.phone;
@@ -100,6 +279,12 @@ export async function updatePatient(id: string, patientData: Partial<Omit<Patien
 }
 
 export async function deletePatient(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    saveMockAppointments(loadMockAppointments().filter(a => a.patientId !== id));
+    saveMockPatients(loadMockPatients().filter(p => p.id !== id));
+    return;
+  }
+
   // First, delete related appointments
   const { error: appointmentError } = await supabase
     .from('appointments')
@@ -108,8 +293,6 @@ export async function deletePatient(id: string): Promise<void> {
 
   if (appointmentError) {
     console.error(`Error deleting related appointments for patient ID ${id}:`, { message: appointmentError.message, details: appointmentError.details, hint: appointmentError.hint, code: appointmentError.code });
-    // Decide if this error should stop the patient deletion
-    // For now, we'll throw it to make the whole operation atomic from the client's perspective
     throw appointmentError;
   }
   
@@ -123,11 +306,16 @@ export async function deletePatient(id: string): Promise<void> {
     console.error(`Error deleting patient (${id}):`, { message: patientError.message, details: patientError.details, hint: patientError.hint, code: patientError.code });
     throw patientError; // Throw error to indicate failure
   }
-  // No return needed for void, or return true if you change the signature back to Promise<boolean>
 }
 
 // Appointment Functions
 export async function getAppointments(): Promise<Appointment[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [...loadMockAppointments()].sort(
+      (a, b) => new Date(`${b.date}T${b.time}`).getTime() - new Date(`${a.date}T${a.time}`).getTime()
+    );
+  }
+
   const { data, error } = await supabase
     .from('appointments')
     .select('*, patients(name)') 
@@ -143,6 +331,12 @@ export async function getAppointments(): Promise<Appointment[]> {
 }
 
 export async function getAppointmentsByDate(date: string): Promise<Appointment[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return loadMockAppointments()
+      .filter(a => a.date === date)
+      .sort((a, b) => a.time.localeCompare(b.time));
+  }
+
   const { data, error } = await supabase
     .from('appointments')
     .select('*, patients(name)')
@@ -157,6 +351,23 @@ export async function getAppointmentsByDate(date: string): Promise<Appointment[]
 }
 
 export async function addAppointment(appointmentData: Omit<Appointment, 'id' | 'createdAt' | 'patientName'>): Promise<Appointment> {
+  if (!isSupabaseConfigured || !supabase) {
+    const patients = loadMockPatients();
+    const patient = patients.find(p => p.id === appointmentData.patientId);
+    const newAppointment: Appointment = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `appt-${Date.now()}`,
+      patientId: appointmentData.patientId,
+      patientName: patient?.name || 'اسم غير معروف',
+      date: appointmentData.date,
+      time: appointmentData.time,
+      type: appointmentData.type || 'غير محدد',
+      notes: appointmentData.notes || undefined,
+      createdAt: new Date().toISOString(),
+    };
+    saveMockAppointments([newAppointment, ...loadMockAppointments()]);
+    return newAppointment;
+  }
+
   const appointmentToInsert = {
     patient_id: appointmentData.patientId,
     date: appointmentData.date,
@@ -178,7 +389,25 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
 }
 
 export async function updateAppointment(id: string, appointmentData: Partial<Omit<Appointment, 'id' | 'createdAt' | 'patientName'>>): Promise<Appointment | null> {
-  const appointmentToUpdate: Record<string, any> = {};
+  if (!isSupabaseConfigured || !supabase) {
+    const appointments = loadMockAppointments();
+    const idx = appointments.findIndex(a => a.id === id);
+    if (idx === -1) return null;
+    const patients = loadMockPatients();
+    const targetPatientId = appointmentData.patientId ?? appointments[idx].patientId;
+    const patient = patients.find(p => p.id === targetPatientId);
+    const updated: Appointment = {
+      ...appointments[idx],
+      ...appointmentData,
+      patientName: patient?.name || appointments[idx].patientName,
+    };
+    const next = [...appointments];
+    next[idx] = updated;
+    saveMockAppointments(next);
+    return updated;
+  }
+
+  const appointmentToUpdate: Database['public']['Tables']['appointments']['Update'] = {};
   if (appointmentData.patientId !== undefined) appointmentToUpdate.patient_id = appointmentData.patientId;
   if (appointmentData.date !== undefined) appointmentToUpdate.date = appointmentData.date;
   if (appointmentData.time !== undefined) appointmentToUpdate.time = appointmentData.time;
@@ -200,6 +429,11 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
 }
 
 export async function deleteAppointment(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    saveMockAppointments(loadMockAppointments().filter(a => a.id !== id));
+    return;
+  }
+
   const { error } = await supabase
     .from('appointments')
     .delete()
@@ -213,44 +447,22 @@ export async function deleteAppointment(id: string): Promise<void> {
 
 // Supabase storage for image upload
 export async function uploadPatientImage(file: File, identifier?: string): Promise<string> {
+  if (!isSupabaseConfigured || !supabase) {
+    if (typeof FileReader !== 'undefined') {
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Failed to read image file'));
+        reader.readAsDataURL(file);
+      });
+    }
+    return `https://placehold.co/400x400?text=${encodeURIComponent(file.name)}`;
+  }
+
     const fileExt = file.name.split('.').pop();
     const uniqueFilePrefix = identifier || crypto.randomUUID(); // Use provided identifier or generate a new UUID
     const fileName = `${uniqueFilePrefix}-${Date.now()}.${fileExt}`;
-    // It's common practice to use a 'public' folder inside your bucket for publicly accessible files.
-    // Adjust the path if your bucket structure is different.
-    const filePath = `public/${fileName}`; // Files will be stored under a 'public' folder in the bucket.
-
-    // Ensure your Supabase bucket is named 'patient-images'.
-    // RLS Policies for 'patient-images' bucket:
-    //
-    // 1. For PUBLIC READ ACCESS (SELECT):
-    //    Allow anyone to read objects from the 'public' folder within the 'patient-images' bucket.
-    //    This is needed for the image URLs to work directly in <img> tags or next/image.
-    //
-    //    CREATE POLICY "Public Read Access for Public Folder in Patient Images"
-    //    ON storage.objects FOR SELECT
-    //    TO public -- Or 'anon' for unauthenticated access
-    //    USING (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
-    //
-    // 2. For AUTHENTICATED UPLOADS (INSERT):
-    //    Allow authenticated users to upload (insert) objects into the 'public' folder.
-    //
-    //    CREATE POLICY "Authenticated Upload to Public Folder in Patient Images"
-    //    ON storage.objects FOR INSERT
-    //    TO authenticated
-    //    WITH CHECK (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
-    //
-    // 3. For AUTHENTICATED DELETES (DELETE):
-    //    Allow authenticated users to delete objects from the 'public' folder.
-    //
-    //    CREATE POLICY "Authenticated Delete from Public Folder in Patient Images"
-    //    ON storage.objects FOR DELETE
-    //    TO authenticated
-    //    USING (bucket_id = 'patient-images' AND (storage.foldername(name))[1] = 'public');
-    //
-    // Note: If your app doesn't have user authentication yet, you might temporarily use 'public' or 'anon'
-    // for INSERT/DELETE policies for testing, BUT THIS IS HIGHLY INSECURE FOR PRODUCTION.
-    // Always secure write access in a production environment.
+    const filePath = `public/${fileName}`;
 
     const { data, error: uploadError } = await supabase.storage
       .from('patient-images')
@@ -267,7 +479,6 @@ export async function uploadPatientImage(file: File, identifier?: string): Promi
       
     if (!urlData || !urlData.publicUrl) {
         console.warn("Uploaded image but could not get public URL. Attempting to remove orphaned file:", filePath);
-        // Try to remove the orphaned file to avoid clutter and potential issues.
         await supabase.storage.from('patient-images').remove([filePath]).catch(removeError => {
             console.error("Failed to remove orphaned file after public URL failure:", removeError, filePath);
         });
