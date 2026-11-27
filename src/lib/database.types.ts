@@ -90,6 +90,100 @@ export interface Database {
           }
         ]
       }
+      whatsapp_connections: {
+        Row: {
+          id: string
+          connection_mode: string
+          connection_status: string
+          display_phone_number: string | null
+          business_name: string | null
+          checklist_state: Json
+          last_webhook_at: string | null
+          last_error: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          connection_mode?: string
+          connection_status?: string
+          display_phone_number?: string | null
+          business_name?: string | null
+          checklist_state?: Json
+          last_webhook_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          connection_mode?: string
+          connection_status?: string
+          display_phone_number?: string | null
+          business_name?: string | null
+          checklist_state?: Json
+          last_webhook_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      whatsapp_messages: {
+        Row: {
+          id: string
+          wa_message_id: string | null
+          direction: string
+          from_phone: string
+          to_phone: string | null
+          contact_name: string | null
+          patient_id: string | null
+          message_type: string
+          message_body: string
+          request_status: string
+          raw_payload: Json | null
+          received_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          wa_message_id?: string | null
+          direction?: string
+          from_phone: string
+          to_phone?: string | null
+          contact_name?: string | null
+          patient_id?: string | null
+          message_type?: string
+          message_body: string
+          request_status?: string
+          raw_payload?: Json | null
+          received_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          wa_message_id?: string | null
+          direction?: string
+          from_phone?: string
+          to_phone?: string | null
+          contact_name?: string | null
+          patient_id?: string | null
+          message_type?: string
+          message_body?: string
+          request_status?: string
+          raw_payload?: Json | null
+          received_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_patient_id_fkey"
+            columns: ["patient_id"]
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never

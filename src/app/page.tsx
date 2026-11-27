@@ -143,19 +143,21 @@ export default function DashboardPage() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-1 shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-xl">التقويم التفاعلي</CardTitle>
+        <Card className="lg:col-span-1 shadow-lg h-fit">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xl text-start">التاريخ</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col items-center">
+          <CardContent className="flex flex-col">
             <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant={"outline"}
-                  className="w-full justify-start text-left font-normal text-lg py-3 h-auto mb-4"
+                  className="w-full justify-start text-start font-normal text-base py-3 h-auto gap-2"
                 >
-                  <CalendarIcon className="ms-2 h-5 w-5" />
-                  {selectedDateLabel ? selectedDateLabel : <span>اختر تاريخاً</span>}
+                  <CalendarIcon className="h-5 w-5 shrink-0 text-primary" />
+                  <span className="truncate">
+                    {selectedDateLabel ? selectedDateLabel : "اختر تاريخاً"}
+                  </span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -170,14 +172,6 @@ export default function DashboardPage() {
                 />
               </PopoverContent>
             </Popover>
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={handleDateSelect}
-              className="rounded-md border p-0 hidden lg:block"
-              locale={arSA}
-              dir="rtl"
-            />
           </CardContent>
         </Card>
 

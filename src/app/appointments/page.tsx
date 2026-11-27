@@ -14,6 +14,7 @@ import {
   FileText,
   Loader2,
   MessageCircle,
+  MessageSquare,
   Phone,
   PlusCircle,
   RefreshCw,
@@ -50,6 +51,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
 import { AppointmentStatusBadge } from '@/components/appointments/AppointmentStatusBadge';
+import { WhatsAppConnectDialog } from '@/components/whatsapp/WhatsAppConnectDialog';
 import type { Appointment, AppointmentStatus, Patient } from '@/lib/types';
 import {
   APPOINTMENT_STATUS_OPTIONS,
@@ -93,6 +95,7 @@ export default function AppointmentsPage() {
   const [searchTerm, setSearchTerm] = React.useState('');
 
   const [isFormOpen, setIsFormOpen] = React.useState(false);
+  const [isWhatsAppConnectOpen, setIsWhatsAppConnectOpen] = React.useState(false);
   const [editingAppointment, setEditingAppointment] = React.useState<Appointment | null>(null);
   const [appointmentToDelete, setAppointmentToDelete] = React.useState<Appointment | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = React.useState(false);
@@ -390,7 +393,16 @@ export default function AppointmentsPage() {
           </p>
         </div>
 
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsWhatsAppConnectOpen(true)}
+            className="flex-shrink-0 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+          >
+            <MessageSquare className="ms-2 h-4 w-4" />
+            ربط واتساب
+          </Button>
           <Button onClick={fetchData} variant="outline" disabled={isLoading || isRefreshing} className="flex-shrink-0">
             {isLoading || isRefreshing ? (
               <Loader2 className="ms-2 h-4 w-4 animate-spin" />
@@ -820,6 +832,10 @@ export default function AppointmentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <WhatsAppConnectDialog
+        open={isWhatsAppConnectOpen}
+        onOpenChange={setIsWhatsAppConnectOpen}
+      />
     </div>
   );
 }

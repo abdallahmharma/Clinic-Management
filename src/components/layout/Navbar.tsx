@@ -2,7 +2,7 @@
 "use client";
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, CalendarDays, Stethoscope } from 'lucide-react';
+import { Home, Users, CalendarDays, Stethoscope, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -10,6 +10,7 @@ const navItems = [
   { href: '/', label: 'لوحة التحكم', icon: Home },
   { href: '/patients', label: 'المرضى', icon: Users },
   { href: '/appointments', label: 'المواعيد', icon: CalendarDays },
+  { href: '/whatsapp', label: 'ربط واتساب', icon: MessageSquare },
 ];
 
 export function Navbar() {
