@@ -2,7 +2,8 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { compressImageToWebP, getStoragePathFromUrl, isDisplayableImageSrc } from './utils';
 import type { Database } from './database.types';
-import type { Patient, Appointment } from './types';
+import type { Patient, Appointment, AppointmentStatus } from './types';
+import { isActiveUpcomingStatus, normalizeAppointmentStatus } from './appointment-status';
 
 // --- In-Memory / LocalStorage Mock Store (used when Supabase is not configured) ---
 const MOCK_PATIENTS_KEY = 'clinic_mock_patients_v1';
@@ -58,6 +59,7 @@ function getInitialMockAppointments(): Appointment[] {
       date: today,
       time: '10:00',
       type: 'بشرة',
+      status: 'confirmed',
       notes: 'جلسة تنظيف ونضارة البشرة',
       createdAt: nowIso,
     },
@@ -69,6 +71,7 @@ function getInitialMockAppointments(): Appointment[] {
       date: today,
       time: '12:30',
       type: 'استشارة',
+      status: 'confirmed',
       notes: 'متابعة دورية',
       createdAt: nowIso,
     },
@@ -113,8 +116,14 @@ function loadMockAppointments(): Appointment[] {
     try {
       const raw = window.localStorage.getItem(MOCK_APPOINTMENTS_KEY);
       if (raw) {
-        memoryAppointments = JSON.parse(raw);
-        return memoryAppointments!;
+        const parsed = JSON.parse(raw);
+        memoryAppointments = Array.isArray(parsed)
+          ? parsed.map((appt) => ({
+              ...appt,
+              status: normalizeAppointmentStatus(appt?.status),
+            }))
+          : [];
+        return memoryAppointments;
       }
     } catch {
       // ignore storage errors
@@ -160,30 +169,193 @@ function mapAppointmentRowToAppointment(row: any): Appointment {
     date: row.date,
     time: row.time,
     type: row.type || 'غير محدد',
+    status: normalizeAppointmentStatus(row?.status),
     notes: row.notes || undefined,
     createdAt: row.created_at,
   };
 }
 
 
+const SUPABASE_BATCH_SIZE = 1000;
+
+export interface PaginatedPatientsParams {
+  page?: number;
+  pageSize?: number;
+  searchTerm?: string;
+}
+
+export interface PaginatedPatientsResult {
+  patients: Patient[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+function sanitizeSearchTermForPostgrest(searchTerm: string): string {
+  return searchTerm
+    .trim()
+    .replace(/[,()%*\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function filterAndSortMockPatients(searchTerm?: string): Patient[] {
+  const normalized = (searchTerm || '').trim().toLowerCase();
+  const sorted = [...loadMockPatients()].sort((a, b) => {
+    const timeDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    return b.id.localeCompare(a.id);
+  });
+
+  if (!normalized) return sorted;
+  return sorted.filter(
+    (p) =>
+      p.name.toLowerCase().includes(normalized) ||
+      p.phone.toLowerCase().includes(normalized)
+  );
+}
+
 // Patient Functions
-export async function getPatients(): Promise<Patient[]> {
+export async function getPatientsPaginated(
+  params: PaginatedPatientsParams = {}
+): Promise<PaginatedPatientsResult> {
+  const safePageSize = Math.min(Math.max(1, Math.floor(params.pageSize ?? 50)), 200);
+  const requestedPage = Math.max(1, Math.floor(params.page ?? 1));
+  const rawSearch = params.searchTerm || '';
+
   if (!isSupabaseConfigured || !supabase) {
-    return [...loadMockPatients()].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const allFiltered = filterAndSortMockPatients(rawSearch);
+    const totalCount = allFiltered.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / safePageSize));
+    const safePage = Math.min(requestedPage, totalPages);
+    const from = (safePage - 1) * safePageSize;
+    return {
+      patients: allFiltered.slice(from, from + safePageSize),
+      totalCount,
+      page: safePage,
+      pageSize: safePageSize,
+    };
   }
 
-  const { data, error } = await supabase
-    .from('patients')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const cleanSearch = sanitizeSearchTermForPostgrest(rawSearch);
+  const runPageQuery = async (targetPage: number) => {
+    const from = (targetPage - 1) * safePageSize;
+    const to = from + safePageSize - 1;
+
+    let query = supabase!
+      .from('patients')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (cleanSearch) {
+      const pattern = `%${cleanSearch}%`;
+      query = query.or(`name.ilike.${pattern},phone.ilike.${pattern}`);
+    }
+
+    return query.range(from, to);
+  };
+
+  let activePage = requestedPage;
+  let { data, error, count } = await runPageQuery(activePage);
 
   if (error) {
-    console.error('Error fetching patients:', { message: error.message, details: error.details, hint: error.hint, code: error.code });
+    console.error('Error fetching paginated patients:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
     throw error;
   }
-  return data ? data.map(mapPatientRowToPatient) : [];
+
+  const totalCount = count ?? (data ? data.length : 0);
+  const totalPages = Math.max(1, Math.ceil(totalCount / safePageSize));
+
+  if (activePage > totalPages && totalCount > 0) {
+    activePage = totalPages;
+    const fallbackRes = await runPageQuery(activePage);
+    if (fallbackRes.error) {
+      console.error('Error fetching clamped patients page:', fallbackRes.error);
+      throw fallbackRes.error;
+    }
+    data = fallbackRes.data;
+  }
+
+  return {
+    patients: data ? data.map(mapPatientRowToPatient) : [],
+    totalCount,
+    page: activePage,
+    pageSize: safePageSize,
+  };
+}
+
+export async function getAllPatientsBatched(
+  searchTerm?: string,
+  onProgress?: (loadedCount: number, totalCount: number | null) => void
+): Promise<Patient[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    const allFiltered = filterAndSortMockPatients(searchTerm);
+    onProgress?.(allFiltered.length, allFiltered.length);
+    return allFiltered;
+  }
+
+  const cleanSearch = sanitizeSearchTermForPostgrest(searchTerm || '');
+  const collected: Patient[] = [];
+  let knownTotalCount: number | null = null;
+  let batchIndex = 0;
+
+  while (true) {
+    const from = batchIndex * SUPABASE_BATCH_SIZE;
+    const to = from + SUPABASE_BATCH_SIZE - 1;
+
+    let query = supabase
+      .from('patients')
+      .select('*', batchIndex === 0 ? { count: 'exact' } : undefined)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (cleanSearch) {
+      const pattern = `%${cleanSearch}%`;
+      query = query.or(`name.ilike.${pattern},phone.ilike.${pattern}`);
+    }
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) {
+      console.error('Error fetching patients batch:', {
+        batchIndex,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      throw error;
+    }
+
+    if (batchIndex === 0 && typeof count === 'number') {
+      knownTotalCount = count;
+    }
+
+    const batchRows = data ? data.map(mapPatientRowToPatient) : [];
+    collected.push(...batchRows);
+    onProgress?.(collected.length, knownTotalCount);
+
+    if (
+      batchRows.length < SUPABASE_BATCH_SIZE ||
+      (knownTotalCount !== null && collected.length >= knownTotalCount)
+    ) {
+      break;
+    }
+
+    batchIndex += 1;
+  }
+
+  return collected;
+}
+
+export async function getPatients(): Promise<Patient[]> {
+  return getAllPatientsBatched();
 }
 
 export async function getPatientById(id: string): Promise<Patient | undefined> {
@@ -407,7 +579,7 @@ export async function getDashboardStats(referenceDate = new Date()): Promise<Das
       .filter((appt) => appt.date === todayString)
       .sort((a, b) => a.time.localeCompare(b.time));
     const upcomingTodayCount = todayAppointments.filter(
-      (appt) => appt.time.slice(0, 5) >= currentTimeString
+      (appt) => appt.time.slice(0, 5) >= currentTimeString && isActiveUpcomingStatus(appt.status)
     ).length;
 
     return {
@@ -441,7 +613,7 @@ export async function getDashboardStats(referenceDate = new Date()): Promise<Das
   const monthlyAppointments = (monthlyAppointmentsRes.data || []).map(mapAppointmentRowToAppointment);
   const todayAppointments = monthlyAppointments.filter((appt) => appt.date === todayString);
   const upcomingTodayCount = todayAppointments.filter(
-    (appt) => appt.time.slice(0, 5) >= currentTimeString
+    (appt) => appt.time.slice(0, 5) >= currentTimeString && isActiveUpcomingStatus(appt.status)
   ).length;
 
   return {
@@ -516,7 +688,13 @@ export async function getAppointmentsByPatientId(patientId: string): Promise<App
   return data ? data.map(mapAppointmentRowToAppointment) : [];
 }
 
-export async function addAppointment(appointmentData: Omit<Appointment, 'id' | 'createdAt' | 'patientName' | 'patientPhone'>): Promise<Appointment> {
+export async function addAppointment(
+  appointmentData: Omit<Appointment, 'id' | 'createdAt' | 'patientName' | 'patientPhone' | 'status'> & {
+    status?: AppointmentStatus;
+  }
+): Promise<Appointment> {
+  const normalizedStatus = normalizeAppointmentStatus(appointmentData.status);
+
   if (!isSupabaseConfigured || !supabase) {
     const patients = loadMockPatients();
     const patient = patients.find(p => p.id === appointmentData.patientId);
@@ -528,6 +706,7 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
       date: appointmentData.date,
       time: appointmentData.time,
       type: appointmentData.type || 'غير محدد',
+      status: normalizedStatus,
       notes: appointmentData.notes || undefined,
       createdAt: new Date().toISOString(),
     };
@@ -535,11 +714,12 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
     return newAppointment;
   }
 
-  const appointmentToInsert = {
+  const appointmentToInsert: Database['public']['Tables']['appointments']['Insert'] = {
     patient_id: appointmentData.patientId,
     date: appointmentData.date,
     time: appointmentData.time,
     type: appointmentData.type,
+    status: normalizedStatus,
     notes: appointmentData.notes,
   };
   const { data, error } = await supabase
@@ -555,7 +735,10 @@ export async function addAppointment(appointmentData: Omit<Appointment, 'id' | '
   return mapAppointmentRowToAppointment(data);
 }
 
-export async function updateAppointment(id: string, appointmentData: Partial<Omit<Appointment, 'id' | 'createdAt' | 'patientName' | 'patientPhone'>>): Promise<Appointment | null> {
+export async function updateAppointment(
+  id: string,
+  appointmentData: Partial<Omit<Appointment, 'id' | 'createdAt' | 'patientName' | 'patientPhone'>>
+): Promise<Appointment | null> {
   if (!isSupabaseConfigured || !supabase) {
     const appointments = loadMockAppointments();
     const idx = appointments.findIndex(a => a.id === id);
@@ -566,6 +749,10 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
     const updated: Appointment = {
       ...appointments[idx],
       ...appointmentData,
+      status:
+        appointmentData.status !== undefined
+          ? normalizeAppointmentStatus(appointmentData.status)
+          : normalizeAppointmentStatus(appointments[idx].status),
       patientName: patient?.name || appointments[idx].patientName,
       patientPhone: patient?.phone || appointments[idx].patientPhone,
     };
@@ -580,6 +767,9 @@ export async function updateAppointment(id: string, appointmentData: Partial<Omi
   if (appointmentData.date !== undefined) appointmentToUpdate.date = appointmentData.date;
   if (appointmentData.time !== undefined) appointmentToUpdate.time = appointmentData.time;
   if (appointmentData.type !== undefined) appointmentToUpdate.type = appointmentData.type;
+  if (appointmentData.status !== undefined) {
+    appointmentToUpdate.status = normalizeAppointmentStatus(appointmentData.status);
+  }
   if (appointmentData.notes !== undefined) appointmentToUpdate.notes = appointmentData.notes;
 
   const { data, error } = await supabase

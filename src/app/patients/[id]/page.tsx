@@ -32,11 +32,18 @@ import {
   deletePatientImageFromStorage,
   getAppointmentsByPatientId,
   getPatientById,
+  updateAppointment as apiUpdateAppointment,
   updatePatient,
 } from '@/lib/api';
 import { buildWhatsAppUrl } from '@/lib/utils';
 import { useSignedPatientImages } from '@/hooks/use-signed-patient-images';
-import type { Appointment, Patient } from '@/lib/types';
+import type { Appointment, AppointmentStatus, Patient } from '@/lib/types';
+import {
+  APPOINTMENT_STATUS_OPTIONS,
+  getAppointmentStatusLabel,
+  isActiveUpcomingStatus,
+  normalizeAppointmentStatus,
+} from '@/lib/appointment-status';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +51,13 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -65,8 +79,10 @@ import {
 import { PatientForm } from '@/components/patients/PatientForm';
 import { PatientImageManagerDialog } from '@/components/patients/PatientImageManagerDialog';
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
+import { AppointmentStatusBadge } from '@/components/appointments/AppointmentStatusBadge';
 
 function isAppointmentUpcoming(appointment: Appointment): boolean {
+  if (!isActiveUpcomingStatus(appointment.status)) return false;
   const now = new Date();
   const todayString = format(now, 'yyyy-MM-dd');
   if (appointment.date > todayString) return true;
@@ -111,6 +127,8 @@ export default function PatientDetailPage() {
 
   const [previewImageUrl, setPreviewImageUrl] = React.useState<string | null>(null);
   const [deletingImages, setDeletingImages] = React.useState<Record<string, boolean>>({});
+  const [statusFilter, setStatusFilter] = React.useState<'all' | AppointmentStatus>('all');
+  const [updatingStatusIds, setUpdatingStatusIds] = React.useState<Record<string, boolean>>({});
   const { signedUrlMap } = useSignedPatientImages(patient?.imageUrls);
   const hasLoadedRef = React.useRef(false);
 
@@ -155,17 +173,26 @@ export default function PatientDetailPage() {
     fetchPatientRecord();
   }, [fetchPatientRecord]);
 
+  const filteredAppointments = React.useMemo(() => {
+    if (statusFilter === 'all') return appointments;
+    return appointments.filter((appt) => appt.status === statusFilter);
+  }, [appointments, statusFilter]);
+
   const sortedAllAppointments = React.useMemo(() => {
-    return [...appointments].sort(
+    return [...filteredAppointments].sort(
       (a, b) => getAppointmentTimestamp(b) - getAppointmentTimestamp(a)
     );
-  }, [appointments]);
+  }, [filteredAppointments]);
 
   const upcomingAppointments = React.useMemo(() => {
     return sortedAllAppointments
       .filter(isAppointmentUpcoming)
       .sort((a, b) => getAppointmentTimestamp(a) - getAppointmentTimestamp(b));
   }, [sortedAllAppointments]);
+
+  const totalUpcomingCount = React.useMemo(() => {
+    return appointments.filter(isAppointmentUpcoming).length;
+  }, [appointments]);
 
   const pastAppointments = React.useMemo(() => {
     return sortedAllAppointments.filter((appt) => !isAppointmentUpcoming(appt));
@@ -222,6 +249,39 @@ export default function PatientDetailPage() {
       setIsDeletingAppointment(false);
     }
   }, [appointmentToDelete, isDeletingAppointment, toast]);
+
+  const handleQuickStatusChange = React.useCallback(
+    async (appointment: Appointment, nextStatusValue: string) => {
+      const nextStatus = normalizeAppointmentStatus(nextStatusValue);
+      if (nextStatus === appointment.status || updatingStatusIds[appointment.id]) {
+        return;
+      }
+
+      setUpdatingStatusIds((prev) => ({ ...prev, [appointment.id]: true }));
+      try {
+        const updated = await apiUpdateAppointment(appointment.id, { status: nextStatus });
+        if (!updated) throw new Error('Failed to update appointment status');
+
+        setAppointments((prev) =>
+          prev.map((item) => (item.id === appointment.id ? updated : item))
+        );
+        toast({
+          title: 'تم تحديث الحالة',
+          description: `تم تغيير حالة الموعد إلى "${getAppointmentStatusLabel(nextStatus)}".`,
+        });
+      } catch (error) {
+        console.error('Error updating appointment status from patient history:', error);
+        toast({
+          title: 'خطأ',
+          description: 'تعذر تحديث حالة الموعد.',
+          variant: 'destructive',
+        });
+      } finally {
+        setUpdatingStatusIds((prev) => ({ ...prev, [appointment.id]: false }));
+      }
+    },
+    [updatingStatusIds, toast]
+  );
 
   const handleDeleteImage = React.useCallback(
     async (imageUrlToDelete: string) => {
@@ -363,6 +423,7 @@ export default function PatientDetailPage() {
       <div className="relative space-y-4 before:absolute before:top-3 before:bottom-3 before:right-4 before:w-0.5 before:bg-border">
         {items.map((appointment) => {
           const upcoming = isAppointmentUpcoming(appointment);
+          const isUpdatingStatus = Boolean(updatingStatusIds[appointment.id]);
           const appointmentWhatsAppUrl = buildWhatsAppUrl({
             phone: patient.phone,
             patientName: patient.name,
@@ -384,12 +445,39 @@ export default function PatientDetailPage() {
                       <Badge variant={upcoming ? 'default' : 'secondary'}>
                         {upcoming ? 'موعد قادم' : 'موعد سابق'}
                       </Badge>
+                      <AppointmentStatusBadge status={appointment.status} />
                       <Badge variant="outline" className="gap-1">
                         <Stethoscope className="h-3.5 w-3.5 text-primary" />
                         {appointment.type}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Select
+                        value={appointment.status}
+                        onValueChange={(value) => handleQuickStatusChange(appointment, value)}
+                        disabled={isUpdatingStatus}
+                      >
+                        <SelectTrigger
+                          className="h-8 w-[128px] text-xs"
+                          aria-label="تغيير حالة الموعد"
+                        >
+                          {isUpdatingStatus ? (
+                            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              حفظ...
+                            </span>
+                          ) : (
+                            <SelectValue />
+                          )}
+                        </SelectTrigger>
+                        <SelectContent>
+                          {APPOINTMENT_STATUS_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value} className="text-xs">
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       {appointmentWhatsAppUrl ? (
                         <Button
                           variant="ghost"
@@ -599,7 +687,7 @@ export default function PatientDetailPage() {
                 <div className="text-xs text-muted-foreground">إجمالي المواعيد</div>
               </div>
               <div className="rounded-lg border bg-background p-3 text-center">
-                <div className="text-2xl font-bold text-primary">{upcomingAppointments.length}</div>
+                <div className="text-2xl font-bold text-primary">{totalUpcomingCount}</div>
                 <div className="text-xs text-muted-foreground">المواعيد القادمة</div>
               </div>
               <div className="rounded-lg border bg-background p-3 text-center">
@@ -615,27 +703,45 @@ export default function PatientDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Chronological Appointments Timeline */}
         <Card className="lg:col-span-2 shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <CardTitle className="text-xl flex items-center gap-2">
                 <CalendarClock className="h-5 w-5 text-primary" />
                 السجل الزمني للمواعيد والملاحظات
               </CardTitle>
               <CardDescription>
-                المواعيد مرتبة زمنياً مع تمييز الجلسات القادمة والسابقة
+                المواعيد مرتبة زمنياً مع تمييز الجلسات القادمة والسابقة وحالة كل موعد
               </CardDescription>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setEditingAppointment(null);
-                setIsAppointmentFormOpen(true);
-              }}
-            >
-              <CalendarPlus className="ms-1.5 h-4 w-4" />
-              موعد جديد
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => setStatusFilter(value as 'all' | AppointmentStatus)}
+              >
+                <SelectTrigger className="h-9 w-[150px] text-xs" aria-label="تصفية حسب الحالة">
+                  <SelectValue placeholder="كل الحالات" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">كل الحالات ({appointments.length})</SelectItem>
+                  {APPOINTMENT_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingAppointment(null);
+                  setIsAppointmentFormOpen(true);
+                }}
+              >
+                <CalendarPlus className="ms-1.5 h-4 w-4" />
+                موعد جديد
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="all" dir="rtl">
@@ -647,19 +753,25 @@ export default function PatientDetailPage() {
               <TabsContent value="all">
                 {renderAppointmentTimeline(
                   sortedAllAppointments,
-                  'لا توجد أي مواعيد مسجلة لهذا المريض حتى الآن.'
+                  statusFilter === 'all'
+                    ? 'لا توجد أي مواعيد مسجلة لهذا المريض حتى الآن.'
+                    : `لا توجد مواعيد بحالة "${getAppointmentStatusLabel(statusFilter)}".`
                 )}
               </TabsContent>
               <TabsContent value="upcoming">
                 {renderAppointmentTimeline(
                   upcomingAppointments,
-                  'لا توجد مواعيد قادمة مجدولة لهذا المريض.'
+                  statusFilter === 'all'
+                    ? 'لا توجد مواعيد قادمة مجدولة لهذا المريض.'
+                    : `لا توجد مواعيد قادمة بحالة "${getAppointmentStatusLabel(statusFilter)}".`
                 )}
               </TabsContent>
               <TabsContent value="past">
                 {renderAppointmentTimeline(
                   pastAppointments,
-                  'لا توجد مواعيد سابقة في سجل هذا المريض.'
+                  statusFilter === 'all'
+                    ? 'لا توجد مواعيد سابقة في سجل هذا المريض.'
+                    : `لا توجد مواعيد سابقة بحالة "${getAppointmentStatusLabel(statusFilter)}".`
                 )}
               </TabsContent>
             </Tabs>

@@ -1,11 +1,13 @@
 
 "use client";
 
+import Link from 'next/link';
 import type { Appointment } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { CalendarClock, User, StickyNote, Stethoscope } from 'lucide-react';
+import { AppointmentStatusBadge } from '@/components/appointments/AppointmentStatusBadge';
+import { CalendarClock, StickyNote, Stethoscope } from 'lucide-react';
 import { format } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 
@@ -30,9 +32,17 @@ export function DailyAppointments({ appointments, selectedDate }: DailyAppointme
               {appointments.map((appointment) => (
                 <Card key={appointment.id} className="bg-background/50">
                   <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-semibold text-md text-primary">{appointment.patientName}</h3>
-                      <Badge variant="outline" className="text-sm">{appointment.time}</Badge>
+                    <div className="flex flex-wrap justify-between items-start gap-2">
+                      <Link
+                        href={`/patients/${appointment.patientId}`}
+                        className="font-semibold text-md text-primary hover:underline"
+                      >
+                        {appointment.patientName}
+                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <AppointmentStatusBadge status={appointment.status} />
+                        <Badge variant="outline" className="text-sm">{appointment.time}</Badge>
+                      </div>
                     </div>
                     <div className="mt-2 space-y-1.5 text-sm text-muted-foreground">
                       <p className="flex items-center gap-2 font-medium">

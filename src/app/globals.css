@@ -111,3 +111,26 @@ body {
 html[dir="rtl"] {
   /* Specific RTL overrides if necessary */
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    direction: rtl !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  header,
+  footer,
+  [data-radix-portal],
+  .no-print {
+    display: none !important;
+  }
+}

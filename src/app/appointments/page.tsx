@@ -32,6 +32,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -42,18 +49,32 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AppointmentForm } from '@/components/appointments/AppointmentForm';
-import type { Appointment, Patient } from '@/lib/types';
-import { getAppointments, getPatients, deleteAppointment as apiDeleteAppointment } from '@/lib/api';
+import { AppointmentStatusBadge } from '@/components/appointments/AppointmentStatusBadge';
+import type { Appointment, AppointmentStatus, Patient } from '@/lib/types';
+import {
+  APPOINTMENT_STATUS_OPTIONS,
+  getAppointmentStatusLabel,
+  isActiveUpcomingStatus,
+  normalizeAppointmentStatus,
+} from '@/lib/appointment-status';
+import {
+  getAppointments,
+  getPatients,
+  deleteAppointment as apiDeleteAppointment,
+  updateAppointment as apiUpdateAppointment,
+} from '@/lib/api';
 import { buildWhatsAppUrl } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
 type FilterMode = 'today' | 'upcoming' | 'all' | 'date';
+type StatusFilter = 'all' | AppointmentStatus;
 
 interface EnrichedAppointment {
   appointment: Appointment;
   phone: string;
   formattedDate: string;
   isToday: boolean;
+  isTimeUpcoming: boolean;
   isUpcoming: boolean;
   timestamp: number;
   searchableText: string;
@@ -66,6 +87,7 @@ export default function AppointmentsPage() {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   const [filterMode, setFilterMode] = React.useState<FilterMode>('today');
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('all');
   const [selectedDate, setSelectedDate] = React.useState<Date>(() => new Date());
   const [datePickerOpen, setDatePickerOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -75,6 +97,7 @@ export default function AppointmentsPage() {
   const [appointmentToDelete, setAppointmentToDelete] = React.useState<Appointment | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = React.useState(false);
   const [isDeletingAppointment, setIsDeletingAppointment] = React.useState(false);
+  const [updatingStatusIds, setUpdatingStatusIds] = React.useState<Record<string, boolean>>({});
 
   const { toast } = useToast();
   const hasLoadedRef = React.useRef(false);
@@ -164,6 +187,39 @@ export default function AppointmentsPage() {
     setDatePickerOpen(false);
   }, []);
 
+  const handleQuickStatusChange = React.useCallback(
+    async (appointment: Appointment, nextStatusValue: string) => {
+      const nextStatus = normalizeAppointmentStatus(nextStatusValue);
+      if (nextStatus === appointment.status || updatingStatusIds[appointment.id]) {
+        return;
+      }
+
+      setUpdatingStatusIds((prev) => ({ ...prev, [appointment.id]: true }));
+      try {
+        const updated = await apiUpdateAppointment(appointment.id, { status: nextStatus });
+        if (!updated) throw new Error('Failed to update appointment status');
+
+        setAppointments((prev) =>
+          prev.map((item) => (item.id === appointment.id ? updated : item))
+        );
+        toast({
+          title: 'تم تحديث الحالة',
+          description: `تم تغيير حالة موعد ${appointment.patientName} إلى "${getAppointmentStatusLabel(nextStatus)}".`,
+        });
+      } catch (error) {
+        console.error('Quick status update error:', error);
+        toast({
+          title: 'خطأ',
+          description: 'تعذر تحديث حالة الموعد. تأكد من تطبيق تحديث عمود status في قاعدة البيانات.',
+          variant: 'destructive',
+        });
+      } finally {
+        setUpdatingStatusIds((prev) => ({ ...prev, [appointment.id]: false }));
+      }
+    },
+    [updatingStatusIds, toast]
+  );
+
   const patientPhoneMap = React.useMemo(() => {
     const map = new Map<string, string>();
     for (const p of patients) {
@@ -202,9 +258,10 @@ export default function AppointmentsPage() {
 
         const timeShort = appointment.time.slice(0, 5);
         const isToday = appointment.date === todayString;
-        const isUpcoming =
+        const isTimeUpcoming =
           appointment.date > todayString ||
           (isToday && timeShort >= currentTimeString);
+        const isUpcoming = isTimeUpcoming && isActiveUpcomingStatus(appointment.status);
 
         const phone = appointment.patientPhone || patientPhoneMap.get(appointment.patientId) || 'غير متوفر';
         const formattedDate = format(parsedDate, 'EEEE، d MMMM yyyy', { locale: arSA });
@@ -213,6 +270,7 @@ export default function AppointmentsPage() {
         const searchableText = [
           appointment.patientName,
           appointment.type,
+          getAppointmentStatusLabel(appointment.status),
           phone,
           appointment.time,
           appointment.notes || '',
@@ -225,6 +283,7 @@ export default function AppointmentsPage() {
           phone,
           formattedDate,
           isToday,
+          isTimeUpcoming,
           isUpcoming,
           timestamp: Number.isNaN(timestamp) ? 0 : timestamp,
           searchableText,
@@ -247,10 +306,10 @@ export default function AppointmentsPage() {
     };
   }, [enrichedAppointments]);
 
-  const visibleAppointments = React.useMemo(() => {
+  const modeScopedAppointments = React.useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    const filtered = enrichedAppointments.filter((item) => {
+    return enrichedAppointments.filter((item) => {
       if (filterMode === 'today' && !item.isToday) return false;
       if (filterMode === 'upcoming' && !item.isUpcoming) return false;
       if (filterMode === 'date' && item.appointment.date !== selectedDateString) return false;
@@ -260,6 +319,27 @@ export default function AppointmentsPage() {
       }
       return true;
     });
+  }, [enrichedAppointments, filterMode, selectedDateString, searchTerm]);
+
+  const statusCounts = React.useMemo(() => {
+    const map: Record<AppointmentStatus, number> = {
+      confirmed: 0,
+      pending: 0,
+      completed: 0,
+      cancelled: 0,
+      no_show: 0,
+    };
+    for (const item of modeScopedAppointments) {
+      map[item.appointment.status] += 1;
+    }
+    return map;
+  }, [modeScopedAppointments]);
+
+  const visibleAppointments = React.useMemo(() => {
+    const filtered =
+      statusFilter === 'all'
+        ? modeScopedAppointments
+        : modeScopedAppointments.filter((item) => item.appointment.status === statusFilter);
 
     // Sort chronologically ascending for today/specific date/upcoming so doctor sees earliest first
     if (filterMode === 'today' || filterMode === 'date' || filterMode === 'upcoming') {
@@ -268,7 +348,7 @@ export default function AppointmentsPage() {
 
     // For 'all', newest first
     return [...filtered].sort((a, b) => b.timestamp - a.timestamp);
-  }, [enrichedAppointments, filterMode, selectedDateString, searchTerm]);
+  }, [modeScopedAppointments, statusFilter, filterMode]);
 
   const deleteConfirmDateLabel = React.useMemo(() => {
     if (!appointmentToDelete) return "غير محدد";
@@ -401,11 +481,42 @@ export default function AppointmentsPage() {
             </Popover>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
+            <span className="text-xs font-medium text-muted-foreground ms-1">تصفية حسب الحالة:</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={statusFilter === 'all' ? 'secondary' : 'ghost'}
+              onClick={() => setStatusFilter('all')}
+              className="h-7 px-2.5 text-xs gap-1.5"
+            >
+              كل الحالات
+              <Badge variant="outline" className="px-1.5 py-0 text-[11px]">
+                {modeScopedAppointments.length}
+              </Badge>
+            </Button>
+            {APPOINTMENT_STATUS_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={statusFilter === option.value ? 'secondary' : 'ghost'}
+                onClick={() => setStatusFilter(option.value)}
+                className="h-7 px-2.5 text-xs gap-1.5"
+              >
+                {option.label}
+                <Badge variant="outline" className="px-1.5 py-0 text-[11px]">
+                  {statusCounts[option.value]}
+                </Badge>
+              </Button>
+            ))}
+          </div>
+
           <div className="relative">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="ابحث باسم المريض، نوع الجلسة، رقم الهاتف أو الملاحظات..."
+              placeholder="ابحث باسم المريض، نوع الجلسة، الحالة، رقم الهاتف أو الملاحظات..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full ps-10 pe-10 py-2.5 text-base"
@@ -447,7 +558,8 @@ export default function AppointmentsPage() {
         </div>
       ) : visibleAppointments.length > 0 ? (
         <div className="space-y-3">
-          {visibleAppointments.map(({ appointment, phone, formattedDate, isToday, isUpcoming }) => {
+          {visibleAppointments.map(({ appointment, phone, formattedDate, isToday, isTimeUpcoming, isUpcoming }) => {
+            const isUpdatingStatus = Boolean(updatingStatusIds[appointment.id]);
             const whatsAppUrl = buildWhatsAppUrl({
               phone: appointment.patientPhone || patientPhoneMap.get(appointment.patientId),
               patientName: appointment.patientName,
@@ -477,7 +589,7 @@ export default function AppointmentsPage() {
                           variant={isUpcoming ? 'default' : 'secondary'}
                           className="text-[11px] font-medium"
                         >
-                          {isToday ? (isUpcoming ? 'اليوم · قادم' : 'اليوم · منتهي') : (isUpcoming ? 'قادم' : 'سابق')}
+                          {isToday ? (isTimeUpcoming ? 'اليوم · قادم' : 'اليوم · منتهي') : (isTimeUpcoming ? 'قادم' : 'سابق')}
                         </Badge>
                       </div>
 
@@ -490,6 +602,7 @@ export default function AppointmentsPage() {
                           >
                             {appointment.patientName}
                           </Link>
+                          <AppointmentStatusBadge status={appointment.status} />
                           <Badge variant="outline" className="gap-1 font-medium">
                             <Stethoscope className="h-3.5 w-3.5 text-primary" />
                             {appointment.type}
@@ -520,6 +633,34 @@ export default function AppointmentsPage() {
 
                     {/* Quick Actions */}
                     <div className="flex flex-wrap items-center gap-2 lg:flex-shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0">
+                      <div className="flex items-center gap-1.5">
+                        <Select
+                          value={appointment.status}
+                          onValueChange={(value) => handleQuickStatusChange(appointment, value)}
+                          disabled={isUpdatingStatus}
+                        >
+                          <SelectTrigger
+                            className="h-8 w-[132px] text-xs"
+                            aria-label={`تغيير حالة موعد ${appointment.patientName}`}
+                          >
+                            {isUpdatingStatus ? (
+                              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                جاري الحفظ...
+                              </span>
+                            ) : (
+                              <SelectValue />
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {APPOINTMENT_STATUS_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value} className="text-xs">
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       {whatsAppUrl ? (
                         <Button
                           variant="outline"
@@ -582,8 +723,8 @@ export default function AppointmentsPage() {
         <div className="text-center py-12 border rounded-lg shadow-sm bg-card">
           <CalendarHeart className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-3 text-xl font-semibold">
-            {searchTerm
-              ? 'لا توجد مواعيد مطابقة للبحث'
+            {searchTerm || statusFilter !== 'all'
+              ? 'لا توجد مواعيد مطابقة للفلتر أو البحث'
               : filterMode === 'today'
                 ? 'لا توجد مواعيد مجدولة لهذا اليوم'
                 : filterMode === 'upcoming'
@@ -593,14 +734,19 @@ export default function AppointmentsPage() {
                     : 'لا توجد مواعيد مسجلة'}
           </h3>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            {searchTerm
-              ? 'جرّب تغيير كلمات البحث أو التبديل إلى فلتر "الكل".'
+            {searchTerm || statusFilter !== 'all'
+              ? 'جرّب تغيير حالة الفلتر أو كلمات البحث أو التبديل إلى "الكل".'
               : patients.length > 0
                 ? 'يمكنك إضافة موعد جديد مباشرة أو التبديل إلى المواعيد القادمة / الكل.'
                 : 'يرجى إضافة مرضى أولاً لتتمكن من حجز المواعيد.'}
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            {filterMode === 'today' && counts.upcoming > 0 && !searchTerm && (
+            {statusFilter !== 'all' && (
+              <Button variant="outline" size="sm" onClick={() => setStatusFilter('all')}>
+                عرض جميع الحالات ({modeScopedAppointments.length})
+              </Button>
+            )}
+            {filterMode === 'today' && counts.upcoming > 0 && !searchTerm && statusFilter === 'all' && (
               <Button variant="outline" size="sm" onClick={() => setFilterMode('upcoming')}>
                 عرض المواعيد القادمة ({counts.upcoming})
               </Button>

@@ -9,6 +9,13 @@ export interface Patient {
   createdAt: string; // ISO date string
 }
 
+export type AppointmentStatus =
+  | 'confirmed'
+  | 'pending'
+  | 'completed'
+  | 'cancelled'
+  | 'no_show';
+
 export interface Appointment {
   id: string;
   patientId: string;
@@ -17,6 +24,7 @@ export interface Appointment {
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   type: string; // e.g., 'Check-up', 'Consultation'
+  status: AppointmentStatus;
   notes?: string;
   createdAt: string; // ISO date string
 }

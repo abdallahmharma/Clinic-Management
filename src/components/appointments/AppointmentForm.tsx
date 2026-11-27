@@ -15,6 +15,11 @@ import { DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/co
 import { useToast } from '@/hooks/use-toast';
 import type { Appointment, Patient } from '@/lib/types';
 import { addAppointment, updateAppointment } from '@/lib/api';
+import {
+  APPOINTMENT_STATUS_OPTIONS,
+  APPOINTMENT_STATUS_VALUES,
+  normalizeAppointmentStatus,
+} from '@/lib/appointment-status';
 import { format, parse } from 'date-fns';
 import { arSA } from 'date-fns/locale';
 import { CalendarIcon, Loader2, Check, ChevronsUpDown } from 'lucide-react';
@@ -40,6 +45,7 @@ const appointmentSchema = z.object({
   date: z.date({ required_error: "يجب اختيار تاريخ الموعد" }),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "يجب أن يكون الوقت صالحًا (HH:MM)" }),
   type: z.string().min(1, { message: "يجب اختيار نوع الموعد" }),
+  status: z.enum(APPOINTMENT_STATUS_VALUES, { required_error: "يجب اختيار حالة الموعد" }),
   notes: z.string().optional(),
 });
 
@@ -85,6 +91,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
       date: initialDate,
       time: appointment?.time || '09:00',
       type: appointment?.type || '',
+      status: appointment ? normalizeAppointmentStatus(appointment.status) : 'confirmed',
       notes: appointment?.notes || '',
     },
   });
@@ -108,6 +115,7 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
       date: format(data.date, 'yyyy-MM-dd'),
       time: data.time,
       type: data.type,
+      status: data.status,
       notes: data.notes || undefined,
     };
 
@@ -231,25 +239,50 @@ export function AppointmentForm({ appointment, patients, onSuccess, setOpen, def
           {errors.patientId && <p className="text-sm text-destructive mt-1">{errors.patientId.message}</p>}
         </div>
 
-        <div>
-          <Label htmlFor="type">نوع الموعد</Label>
-          <Controller
-            name="type"
-            control={control}
-            render={({ field }) => (
-              <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
-                <SelectTrigger className="w-full mt-1">
-                  <SelectValue placeholder="اختر نوع الموعد..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {appointmentTypes.map(type => (
-                    <SelectItem key={type} value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-          {errors.type && <p className="text-sm text-destructive mt-1">{errors.type.message}</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="type">نوع الموعد</Label>
+            <Controller
+              name="type"
+              control={control}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                  <SelectTrigger className="w-full mt-1">
+                    <SelectValue placeholder="اختر نوع الموعد..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {appointmentTypes.map(type => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.type && <p className="text-sm text-destructive mt-1">{errors.type.message}</p>}
+          </div>
+
+          <div>
+            <Label htmlFor="status">حالة الموعد</Label>
+            <Controller
+              name="status"
+              control={control}
+              render={({ field }) => (
+                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                  <SelectTrigger id="status" className="w-full mt-1">
+                    <SelectValue placeholder="اختر حالة الموعد..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {APPOINTMENT_STATUS_OPTIONS.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.status && <p className="text-sm text-destructive mt-1">{errors.status.message}</p>}
+          </div>
         </div>
 
         <div>

@@ -29,11 +29,11 @@ export default function RootLayout({
     <html lang="ar" dir="rtl">
       <body className={cn(tajawal.variable, 'font-sans antialiased min-h-screen flex flex-col')}>
         <Navbar />
-        <main className="flex-grow container mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-grow container mx-auto px-4 py-8 sm:px-6 lg:px-8 print:p-0 print:max-w-none">
           {children}
         </main>
         <Toaster />
-        <footer className="py-6 text-center text-sm text-muted-foreground border-t">
+        <footer className="py-6 text-center text-sm text-muted-foreground border-t print:hidden">
           © {new Date().getFullYear()} ABOD OMAR
         </footer>
       </body>

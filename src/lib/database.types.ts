@@ -57,6 +57,7 @@ export interface Database {
           date: string // YYYY-MM-DD
           time: string // HH:MM
           type: string
+          status: string
           notes: string | null
           created_at: string
         }
@@ -66,6 +67,7 @@ export interface Database {
           date: string
           time: string
           type: string
+          status?: string
           notes?: string | null
           created_at?: string
         }
@@ -75,6 +77,7 @@ export interface Database {
           date?: string
           time?: string
           type?: string
+          status?: string
           notes?: string | null
           created_at?: string
         }
